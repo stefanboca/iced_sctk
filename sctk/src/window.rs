@@ -10,12 +10,13 @@ use iced_program::{
         RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle, WindowHandle,
     },
 };
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use sctk::{
     reexports::client::{
-        protocol::{wl_display::WlDisplay, wl_surface::WlSurface},
+        protocol::{wl_display::WlDisplay, wl_pointer::WlPointer, wl_surface::WlSurface},
         Proxy, QueueHandle,
     },
+    seat::pointer::ThemedPointer,
     shell::{wlr_layer::LayerSurface, WaylandSurface},
 };
 use state::State;
@@ -77,6 +78,7 @@ where
                 renderer,
                 mouse_interaction: mouse::Interaction::None,
                 redraw_at: RedrawRequest::Wait,
+                pointers: FxHashSet::default(),
                 preedit: None,
                 ime_state: None,
             },
@@ -190,6 +192,7 @@ where
     pub surface: <<P::Renderer as compositor::Default>::Compositor as Compositor>::Surface,
     pub renderer: P::Renderer,
     pub redraw_at: RedrawRequest,
+    pub pointers: FxHashSet<WlPointer>,
     preedit: Option<Preedit<P::Renderer>>,
     ime_state: Option<(Point, input_method::Purpose)>,
 }
@@ -254,8 +257,6 @@ where
     }
 
     pub fn update_mouse(&mut self, interaction: mouse::Interaction) {
-        // TODO: set cursor
-
         self.mouse_interaction = interaction;
     }
 

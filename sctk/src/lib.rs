@@ -36,7 +36,7 @@ use sctk::{
             protocol::{
                 wl_display, wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface, wl_touch,
             },
-            Connection, QueueHandle,
+            Connection, Proxy, QueueHandle,
         },
         protocols::wp::text_input::zv3::client::zwp_text_input_manager_v3::ZwpTextInputManagerV3,
     },
@@ -44,7 +44,7 @@ use sctk::{
     registry_handlers,
     seat::{
         keyboard::KeyboardHandler,
-        pointer::{PointerHandler, ThemedPointer},
+        pointer::{PointerData, PointerHandler, ThemedPointer},
         touch::TouchHandler,
         SeatHandler, SeatState,
     },
@@ -151,11 +151,12 @@ where
         })
         .unwrap();
 
-    let _ = WaylandSource::new(conn, event_queue)
+    let _ = WaylandSource::new(conn.clone(), event_queue)
         .insert(loop_handle.clone())
         .unwrap();
 
     let mut state = State {
+        conn,
         display,
         registry_state: RegistryState::new(&globals),
         output_state: OutputState::new(&globals, &qh),
@@ -231,6 +232,7 @@ struct State<P>
 where
     P: Program + 'static,
 {
+    conn: Connection,
     qh: QueueHandle<State<P>>,
     display: wl_display::WlDisplay,
     registry_state: RegistryState,
@@ -443,6 +445,14 @@ impl<P: Program + 'static> State<P> {
                     mouse_interaction,
                     ..
                 } => {
+                    for pointer in window.pointers.iter() {
+                        if let Some(data) = pointer.data::<PointerData>()
+                            && let Some(themed_pointer) = self.pointers.get(data.seat())
+                        {
+                            let _ = themed_pointer
+                                .set_cursor(&self.conn, conversion::mouse::icon(mouse_interaction));
+                        }
+                    }
                     window.update_mouse(mouse_interaction);
                     window.request_redraw(redraw_request);
                 }
@@ -782,6 +792,15 @@ impl<P: Program + 'static> CompositorHandler for State<P> {
         {
             window.request_redraw(redraw_request);
             window.request_input_method(input_method);
+
+            for pointer in window.pointers.iter() {
+                if let Some(data) = pointer.data::<PointerData>()
+                    && let Some(themed_pointer) = self.pointers.get(data.seat())
+                {
+                    let _ = themed_pointer
+                        .set_cursor(&self.conn, conversion::mouse::icon(mouse_interaction));
+                }
+            }
             window.update_mouse(mouse_interaction);
         }
 
@@ -1061,7 +1080,11 @@ impl<P: Program + 'static> SeatHandler for State<P> {
                 }
             }
             sctk::seat::Capability::Pointer => {
-                let _ = self.pointers.remove(&seat);
+                if let Some(pointer) = self.pointers.remove(&seat) {
+                    for (_, window) in self.window_manager.iter_mut() {
+                        let _ = window.pointers.remove(pointer.pointer());
+                    }
+                }
             }
             sctk::seat::Capability::Touch => {
                 if let Some(touch) = self.touch.remove(&seat) {
@@ -1196,12 +1219,10 @@ impl<P: Program + 'static> PointerHandler for State<P> {
         &mut self,
         _: &Connection,
         _: &QueueHandle<Self>,
-        _: &wl_pointer::WlPointer,
+        pointer: &wl_pointer::WlPointer,
         events: &[sctk::seat::pointer::PointerEvent],
     ) {
         use sctk::seat::pointer::PointerEventKind as PEK;
-
-        // TODO: emit iced events
 
         for sctk::seat::pointer::PointerEvent {
             surface,
@@ -1213,6 +1234,7 @@ impl<P: Program + 'static> PointerHandler for State<P> {
                 let position = core::Point::new(position.0 as f32, position.1 as f32);
                 match kind {
                     PEK::Enter { .. } => {
+                        let _ = window.pointers.insert(pointer.clone());
                         window.state.update_cursor(Some(position));
                         self.events
                             .push((id, core::Event::Mouse(core::mouse::Event::CursorEntered)));
@@ -1256,6 +1278,7 @@ impl<P: Program + 'static> PointerHandler for State<P> {
                         }),
                     )),
                     PEK::Leave { .. } => {
+                        let _ = window.pointers.remove(pointer);
                         window.state.update_cursor(None);
                         self.events
                             .push((id, core::Event::Mouse(core::mouse::Event::CursorLeft)));
@@ -1266,8 +1289,6 @@ impl<P: Program + 'static> PointerHandler for State<P> {
     }
 }
 
-// TODO: handle
-// remember to window.state.update_cursor
 impl<P: Program + 'static> TouchHandler for State<P> {
     fn down(
         &mut self,

@@ -1,6 +1,9 @@
 use crate::core;
 
 pub mod mouse {
+    use iced_debug::core::mouse::Interaction;
+    use sctk::seat::pointer::CursorIcon;
+
     use super::core;
 
     pub fn button(button: u32) -> core::mouse::Button {
@@ -15,6 +18,30 @@ pub mod mouse {
             BTN_BACK => Button::Back,
             BTN_FORWARD => Button::Forward,
             _ => Button::Other(button as u16),
+        }
+    }
+
+    pub fn icon(interaction: Interaction) -> CursorIcon {
+        match interaction {
+            Interaction::None => CursorIcon::Default,
+            Interaction::Idle => CursorIcon::Default,
+            Interaction::Pointer => CursorIcon::Pointer,
+            Interaction::Grab => CursorIcon::Grab,
+            Interaction::Text => CursorIcon::Text,
+            Interaction::Crosshair => CursorIcon::Crosshair,
+            Interaction::Working => CursorIcon::Progress,
+            Interaction::Grabbing => CursorIcon::Grabbing,
+            Interaction::ResizingHorizontally => CursorIcon::RowResize,
+            Interaction::ResizingVertically => CursorIcon::ColResize,
+            Interaction::ResizingDiagonallyUp => CursorIcon::NeResize,
+            Interaction::ResizingDiagonallyDown => CursorIcon::SeResize,
+            Interaction::NotAllowed => CursorIcon::NotAllowed,
+            Interaction::ZoomIn => CursorIcon::ZoomIn,
+            Interaction::ZoomOut => CursorIcon::ZoomOut,
+            Interaction::Cell => CursorIcon::Cell,
+            Interaction::Move => CursorIcon::Move,
+            Interaction::Copy => CursorIcon::Copy,
+            Interaction::Help => CursorIcon::Help,
         }
     }
 }

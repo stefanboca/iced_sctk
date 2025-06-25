@@ -18,7 +18,7 @@ where
     scale_factor: f64,
     viewport: Viewport,
     viewport_version: u64,
-    cursor_position: Option<Point<f64>>,
+    cursor_position: Option<Point<f32>>,
     modifiers: sctk::seat::keyboard::Modifiers,
     theme: P::Theme,
     style: theme::Style,
@@ -100,8 +100,8 @@ where
         self.cursor_position
             .map(|p| {
                 mouse::Cursor::Available(Point::new(
-                    (p.x / self.scale_factor) as f32,
-                    (p.y / self.scale_factor) as f32,
+                    p.x / (self.scale_factor as f32),
+                    p.y / (self.scale_factor as f32),
                 ))
             })
             .unwrap_or(mouse::Cursor::Unavailable)
@@ -126,7 +126,7 @@ where
         self.style.text_color
     }
 
-    pub fn update_cursor(&mut self, position: Option<Point<f64>>) {
+    pub fn update_cursor(&mut self, position: Option<Point<f32>>) {
         self.cursor_position = position;
     }
 

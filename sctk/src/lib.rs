@@ -21,8 +21,8 @@ mod window;
 use iced_debug::core::layer_shell;
 use iced_program::runtime::{user_interface, UserInterface};
 use rustc_hash::FxHashMap;
-use smithay_client_toolkit as sctk;
 use smithay_client_toolkit::{
+    self as sctk,
     compositor::{CompositorHandler, CompositorState},
     output::{OutputHandler, OutputState},
     reexports::{
@@ -55,7 +55,6 @@ use smithay_client_toolkit::{
     },
     shm::{Shm, ShmHandler},
 };
-use wayland_backend::client::ObjectId;
 
 pub use crate::error::Error;
 use crate::{
@@ -172,6 +171,8 @@ where
         pointers: FxHashMap::default(),
         touch: FxHashMap::default(),
 
+        touches: FxHashMap::default(),
+
         is_daemon,
         error: None,
         loop_handle,
@@ -240,9 +241,11 @@ where
     layer_shell: LayerShell,
     text_input_manager: Option<ZwpTextInputManagerV3>,
 
-    keyboards: FxHashMap<ObjectId, wl_keyboard::WlKeyboard>,
-    pointers: FxHashMap<ObjectId, ThemedPointer>,
-    touch: FxHashMap<ObjectId, wl_touch::WlTouch>,
+    keyboards: FxHashMap<wl_seat::WlSeat, wl_keyboard::WlKeyboard>,
+    pointers: FxHashMap<wl_seat::WlSeat, ThemedPointer>,
+    touch: FxHashMap<wl_seat::WlSeat, wl_touch::WlTouch>,
+
+    touches: FxHashMap<wl_touch::WlTouch, FxHashMap<i32, core::window::Id>>,
 
     is_daemon: bool,
     error: Option<Error>,
@@ -263,7 +266,7 @@ where
     events: Vec<(core::window::Id, core::Event)>,
     actions: usize,
 
-    in_progress_windows: FxHashMap<ObjectId, InProgressWindow>,
+    in_progress_windows: FxHashMap<wl_surface::WlSurface, InProgressWindow>,
 }
 
 impl<P: Program + 'static> State<P> {
@@ -285,10 +288,9 @@ impl<P: Program + 'static> State<P> {
 
         let surface = self.wl_compositor.create_surface(&self.qh);
 
-        let surface_id = surface.id();
         let layer_surface = self.layer_shell.create_layer_surface(
             &self.qh,
-            surface,
+            surface.clone(),
             match settings.layer {
                 core::layer_shell::Layer::Background => wlr_layer::Layer::Background,
                 core::layer_shell::Layer::Bottom => wlr_layer::Layer::Bottom,
@@ -323,7 +325,7 @@ impl<P: Program + 'static> State<P> {
         layer_surface.commit();
 
         let _ = self.in_progress_windows.insert(
-            surface_id,
+            surface,
             InProgressWindow {
                 id,
                 raw_window: RawWindow::Layer(self.display.clone(), layer_surface),
@@ -1010,7 +1012,25 @@ impl<P: Program + 'static> SeatHandler for State<P> {
         match capability {
             sctk::seat::Capability::Keyboard => {
                 if let Ok(keyboard) = self.seat_state.get_keyboard(&self.qh, &seat, None) {
-                    let _ = self.keyboards.insert(seat.id(), keyboard);
+                    if let Some(keyboard) = self.keyboards.insert(seat, keyboard) {
+                        for (id, window) in self.window_manager.iter_mut() {
+                            if window.keyboards.remove(&keyboard) {
+                                window
+                                    .state
+                                    .update_modifiers(sctk::seat::keyboard::Modifiers::default());
+                                self.events.push((
+                                    id,
+                                    core::Event::Keyboard(core::keyboard::Event::ModifiersChanged(
+                                        core::keyboard::Modifiers::default(),
+                                    )),
+                                ));
+                                self.events.push((
+                                    id,
+                                    core::Event::Window(core::window::Event::Unfocused),
+                                ));
+                            }
+                        }
+                    }
                 }
             }
             sctk::seat::Capability::Pointer => {
@@ -1021,12 +1041,12 @@ impl<P: Program + 'static> SeatHandler for State<P> {
                     self.wl_compositor.create_surface(&self.qh),
                     sctk::seat::pointer::ThemeSpec::System,
                 ) {
-                    let _ = self.pointers.insert(seat.id(), pointer);
+                    let _ = self.pointers.insert(seat, pointer);
                 }
             }
             sctk::seat::Capability::Touch => {
                 if let Ok(touch) = self.seat_state.get_touch(&self.qh, &seat) {
-                    let _ = self.touch.insert(seat.id(), touch);
+                    let _ = self.touch.insert(seat, touch);
                 }
             }
             _ => {}
@@ -1035,8 +1055,8 @@ impl<P: Program + 'static> SeatHandler for State<P> {
 
     fn remove_capability(
         &mut self,
-        _: &Connection,
-        _: &QueueHandle<Self>,
+        conn: &Connection,
+        qh: &QueueHandle<Self>,
         seat: wl_seat::WlSeat,
         capability: sctk::seat::Capability,
     ) {
@@ -1048,7 +1068,9 @@ impl<P: Program + 'static> SeatHandler for State<P> {
                 let _ = self.pointers.remove(&seat.id());
             }
             sctk::seat::Capability::Touch => {
-                let _ = self.touch.remove(&seat.id());
+                if let Some(touch) = self.touch.remove(&seat.id()) {
+                    self.cancel(conn, qh, &touch);
+                }
             }
             _ => {}
         }
@@ -1069,7 +1091,7 @@ impl<P: Program + 'static> KeyboardHandler for State<P> {
         _: &[sctk::seat::keyboard::Keysym],
     ) {
         if let Some((id, window)) = self.window_manager.get_mut_alias(surface) {
-            let _ = window.keyboards.insert(keyboard.id());
+            let _ = window.keyboards.insert(keyboard.clone());
             self.events
                 .push((id, core::Event::Window(core::window::Event::Focused)));
         }
@@ -1084,18 +1106,19 @@ impl<P: Program + 'static> KeyboardHandler for State<P> {
         _: u32,
     ) {
         if let Some((id, window)) = self.window_manager.get_mut_alias(surface) {
-            let _ = window.keyboards.insert(keyboard.id());
-            window
-                .state
-                .update_modifiers(sctk::seat::keyboard::Modifiers::default());
-            self.events.push((
-                id,
-                core::Event::Keyboard(core::keyboard::Event::ModifiersChanged(
-                    core::keyboard::Modifiers::default(),
-                )),
-            ));
-            self.events
-                .push((id, core::Event::Window(core::window::Event::Unfocused)));
+            if window.keyboards.remove(keyboard) {
+                window
+                    .state
+                    .update_modifiers(sctk::seat::keyboard::Modifiers::default());
+                self.events.push((
+                    id,
+                    core::Event::Keyboard(core::keyboard::Event::ModifiersChanged(
+                        core::keyboard::Modifiers::default(),
+                    )),
+                ));
+                self.events
+                    .push((id, core::Event::Window(core::window::Event::Unfocused)));
+            }
         }
     }
 
@@ -1198,7 +1221,7 @@ impl<P: Program + 'static> PointerHandler for State<P> {
         } in events
         {
             if let Some((id, window)) = self.window_manager.get_mut_alias(surface) {
-                let position = core::Point::new(position.0, position.1);
+                let position = core::Point::new(position.0 as f32, position.1 as f32);
                 match kind {
                     PEK::Enter { .. } => {
                         window.state.update_cursor(Some(position));
@@ -1212,8 +1235,8 @@ impl<P: Program + 'static> PointerHandler for State<P> {
                             id,
                             core::Event::Mouse(core::mouse::Event::CursorMoved {
                                 position: core::Point::new(
-                                    (position.x / scale_factor) as f32,
-                                    (position.y / scale_factor) as f32,
+                                    position.x / (scale_factor as f32),
+                                    position.y / (scale_factor as f32),
                                 ),
                             }),
                         ));
@@ -1261,35 +1284,80 @@ impl<P: Program + 'static> TouchHandler for State<P> {
         &mut self,
         _: &Connection,
         _: &QueueHandle<Self>,
-        _: &wl_touch::WlTouch,
+        touch: &wl_touch::WlTouch,
         _: u32,
         _: u32,
-        _: wl_surface::WlSurface,
-        _: i32,
-        _: (f64, f64),
+        surface: wl_surface::WlSurface,
+        touch_id: i32,
+        position: (f64, f64),
     ) {
+        if let Some((id, window)) = self.window_manager.get_mut_alias(&surface) {
+            let position = core::Point::new(position.0 as f32, position.1 as f32);
+            let touch_ids = self
+                .touches
+                .entry(touch.clone())
+                .or_insert_with(|| FxHashMap::default());
+            let _ = touch_ids.insert(touch_id, id);
+
+            let _ = window.touches.insert(touch_id, position);
+            window.state.update_cursor(Some(position));
+            self.events.push((
+                id,
+                core::Event::Touch(core::touch::Event::FingerPressed {
+                    id: core::touch::Finger(touch_id as u64),
+                    position,
+                }),
+            ));
+        }
     }
 
     fn up(
         &mut self,
         _: &Connection,
         _: &QueueHandle<Self>,
-        _: &wl_touch::WlTouch,
+        touch: &wl_touch::WlTouch,
         _: u32,
         _: u32,
-        _: i32,
+        touch_id: i32,
     ) {
+        if let Some(touch_ids) = self.touches.get_mut(touch)
+            && let Some(id) = touch_ids.remove(&touch_id)
+            && let Some(window) = self.window_manager.get_mut(id)
+            && let Some(position) = window.touches.remove(&touch_id)
+        {
+            self.events.push((
+                id,
+                core::Event::Touch(core::touch::Event::FingerLifted {
+                    id: core::touch::Finger(touch_id as u64),
+                    position,
+                }),
+            ));
+        }
     }
 
     fn motion(
         &mut self,
         _: &Connection,
         _: &QueueHandle<Self>,
-        _: &wl_touch::WlTouch,
+        touch: &wl_touch::WlTouch,
         _: u32,
-        _: i32,
-        _: (f64, f64),
+        touch_id: i32,
+        position: (f64, f64),
     ) {
+        if let Some(touch_ids) = self.touches.get(touch)
+            && let Some(&id) = touch_ids.get(&touch_id)
+            && let Some(window) = self.window_manager.get_mut(id)
+        {
+            let position = core::Point::new(position.0 as f32, position.1 as f32);
+            let _ = window.touches.insert(touch_id, position);
+            self.events.push((
+                id,
+                core::Event::Touch(core::touch::Event::FingerMoved {
+                    id: core::touch::Finger(touch_id as u64),
+                    position,
+                }),
+            ));
+        }
     }
 
     fn shape(
@@ -1313,7 +1381,23 @@ impl<P: Program + 'static> TouchHandler for State<P> {
     ) {
     }
 
-    fn cancel(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_touch::WlTouch) {}
+    fn cancel(&mut self, _: &Connection, _: &QueueHandle<Self>, touch: &wl_touch::WlTouch) {
+        if let Some(touch_ids) = self.touches.remove(touch) {
+            for (touch_id, id) in touch_ids {
+                if let Some(window) = self.window_manager.get_mut(id)
+                    && let Some(position) = window.touches.remove(&touch_id)
+                {
+                    self.events.push((
+                        id,
+                        core::Event::Touch(core::touch::Event::FingerLost {
+                            id: core::touch::Finger(touch_id as u64),
+                            position,
+                        }),
+                    ));
+                }
+            }
+        }
+    }
 }
 
 impl<P: Program + 'static> ShmHandler for State<P> {

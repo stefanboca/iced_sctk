@@ -13,13 +13,12 @@ use iced_program::{
 use rustc_hash::{FxHashMap, FxHashSet};
 use smithay_client_toolkit::{
     reexports::client::{
-        protocol::{wl_display::WlDisplay, wl_surface::WlSurface},
+        protocol::{wl_display::WlDisplay, wl_keyboard::WlKeyboard, wl_surface::WlSurface},
         Proxy, QueueHandle,
     },
     shell::{wlr_layer::LayerSurface, WaylandSurface},
 };
 use state::State;
-use wayland_backend::client::ObjectId;
 
 pub use crate::core::window::{Id, RedrawRequest};
 use crate::{
@@ -33,7 +32,7 @@ where
     P: Program + 'static,
     P::Theme: theme::Base,
 {
-    aliases: FxHashMap<ObjectId, Id>,
+    aliases: FxHashMap<WlSurface, Id>,
     entries: BTreeMap<Id, Window<P>>,
 }
 
@@ -65,7 +64,7 @@ where
             compositor.create_surface(window.clone(), surface_size.width, surface_size.height);
         let renderer = compositor.create_renderer();
 
-        let _ = self.aliases.insert(window.surface().id(), id);
+        let _ = self.aliases.insert(window.surface().clone(), id);
 
         let _ = self.entries.insert(
             id,
@@ -79,6 +78,7 @@ where
                 mouse_interaction: mouse::Interaction::None,
                 redraw_at: RedrawRequest::Wait,
                 keyboards: FxHashSet::default(),
+                touches: FxHashMap::default(),
                 preedit: None,
                 ime_state: None,
             },
@@ -192,7 +192,8 @@ where
     pub surface: <<P::Renderer as compositor::Default>::Compositor as Compositor>::Surface,
     pub renderer: P::Renderer,
     pub redraw_at: RedrawRequest,
-    pub keyboards: FxHashSet<ObjectId>,
+    pub keyboards: FxHashSet<WlKeyboard>,
+    pub touches: FxHashMap<i32, Point>,
     preedit: Option<Preedit<P::Renderer>>,
     ime_state: Option<(Point, input_method::Purpose)>,
 }

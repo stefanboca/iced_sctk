@@ -475,12 +475,12 @@
 )]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
+use iced_sctk as shell;
+use iced_sctk::core;
+use iced_sctk::program;
+use iced_sctk::runtime;
 use iced_widget::graphics;
 use iced_widget::renderer;
-use iced_winit as shell;
-use iced_winit::core;
-use iced_winit::program;
-use iced_winit::runtime;
 
 pub use iced_futures::futures;
 pub use iced_futures::stream;

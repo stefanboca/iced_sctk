@@ -3,7 +3,7 @@
 use std::time::Instant;
 
 use iced_debug::{
-    core::{SmolStr, renderer, widget::operation, window::RedrawRequest},
+    core::{renderer, widget::operation, window::RedrawRequest, SmolStr},
     futures::futures::channel::oneshot,
 };
 pub use iced_program as program;
@@ -19,7 +19,7 @@ mod proxy;
 mod window;
 
 use iced_debug::core::layer_shell;
-use iced_program::runtime::{UserInterface, user_interface};
+use iced_program::runtime::{user_interface, UserInterface};
 use rustc_hash::FxHashMap;
 use smithay_client_toolkit as sctk;
 use smithay_client_toolkit::{
@@ -27,30 +27,31 @@ use smithay_client_toolkit::{
     output::{OutputHandler, OutputState},
     reexports::{
         calloop::{
-            Dispatcher, EventLoop, LoopHandle, LoopSignal, RegistrationToken,
             timer::{TimeoutAction, Timer},
+            Dispatcher, EventLoop, LoopHandle, LoopSignal, RegistrationToken,
         },
         calloop_wayland_source::WaylandSource,
         client::{
-            Connection, Proxy, QueueHandle, delegate_noop,
+            delegate_noop,
             globals::registry_queue_init,
             protocol::{
                 wl_display, wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface, wl_touch,
             },
+            Connection, Proxy, QueueHandle,
         },
         protocols::wp::text_input::zv3::client::zwp_text_input_manager_v3::ZwpTextInputManagerV3,
     },
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
     seat::{
-        SeatHandler, SeatState,
         keyboard::KeyboardHandler,
         pointer::{PointerHandler, ThemedPointer},
         touch::TouchHandler,
+        SeatHandler, SeatState,
     },
     shell::{
-        WaylandSurface,
         wlr_layer::{self, LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure},
+        WaylandSurface,
     },
     shm::{Shm, ShmHandler},
 };
@@ -59,9 +60,9 @@ use wayland_backend::client::ObjectId;
 pub use crate::error::Error;
 use crate::{
     clipboard::Clipboard,
-    core::{Settings, theme},
-    futures::{Executor, Runtime, subscription},
-    graphics::{Compositor, compositor},
+    core::{theme, Settings},
+    futures::{subscription, Executor, Runtime},
+    graphics::{compositor, Compositor},
     program::Program,
     proxy::ProxySink,
     runtime::Action,
@@ -72,7 +73,7 @@ use crate::{
 pub fn run<P>(
     program: P,
     settings: Settings,
-    // window_settings: Option<window::Settings>, // TODO: daemon/non-daemon
+    window_settings: Option<core::window::Settings>,
 ) -> Result<(), Error>
 where
     P: Program + 'static,
@@ -124,8 +125,9 @@ where
         .insert(loop_handle.clone())
         .unwrap();
 
-    // TODO: make configurable
-    let is_daemon = true;
+    let is_daemon = window_settings.is_none();
+
+    // TODO: open window if non-daemon
 
     let mut state = State {
         display,
@@ -572,6 +574,7 @@ impl<P: Program + 'static> State<P> {
                     let _ = channel.send(Ok(()));
                 }
             }
+            Action::Reload => todo!(),
             Action::Exit => self.exit(None),
         }
     }

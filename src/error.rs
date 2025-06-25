@@ -9,10 +9,6 @@ pub enum Error {
     #[error("the futures executor could not be created")]
     ExecutorCreationFailed(futures::io::Error),
 
-    /// The application window could not be created.
-    #[error("the application window could not be created")]
-    WindowCreationFailed(Box<dyn std::error::Error + Send + Sync>),
-
     /// The application graphics context could not be created.
     #[error("the application graphics context could not be created")]
     GraphicsCreationFailed(graphics::Error),
@@ -23,9 +19,6 @@ impl From<shell::Error> for Error {
         match error {
             shell::Error::ExecutorCreationFailed(error) => {
                 Error::ExecutorCreationFailed(error)
-            }
-            shell::Error::WindowCreationFailed(error) => {
-                Error::WindowCreationFailed(Box::new(error))
             }
             shell::Error::GraphicsCreationFailed(error) => {
                 Error::GraphicsCreationFailed(error)

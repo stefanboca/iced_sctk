@@ -602,7 +602,32 @@ impl<P: Program + 'static> State<P> {
                     let _ = channel.send(Ok(()));
                 }
             }
-            Action::Reload => todo!(),
+            Action::Reload => {
+                let program_wrapper = self.program_wrapper.as_mut().unwrap();
+                program_wrapper.with_mut(|fields| {
+                    for (id, window) in self.window_manager.iter_mut() {
+                        let Some(ui) = fields.user_interfaces.remove(&id) else {
+                            continue;
+                        };
+
+                        let cache = ui.into_cache();
+                        let size = window.size();
+
+                        let _ = fields.user_interfaces.insert(
+                            id,
+                            build_user_interface(
+                                fields.program,
+                                cache,
+                                &mut window.renderer,
+                                size,
+                                id,
+                            ),
+                        );
+
+                        window.request_redraw(RedrawRequest::NextFrame);
+                    }
+                });
+            }
             Action::Exit => self.exit(None),
         }
     }

@@ -10,10 +10,10 @@ use iced_program::{
         RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle, WindowHandle,
     },
 };
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 use sctk::{
     reexports::client::{
-        protocol::{wl_display::WlDisplay, wl_keyboard::WlKeyboard, wl_surface::WlSurface},
+        protocol::{wl_display::WlDisplay, wl_surface::WlSurface},
         Proxy, QueueHandle,
     },
     shell::{wlr_layer::LayerSurface, WaylandSurface},
@@ -77,8 +77,6 @@ where
                 renderer,
                 mouse_interaction: mouse::Interaction::None,
                 redraw_at: RedrawRequest::Wait,
-                keyboards: FxHashSet::default(),
-                touches: FxHashMap::default(),
                 preedit: None,
                 ime_state: None,
             },
@@ -192,8 +190,6 @@ where
     pub surface: <<P::Renderer as compositor::Default>::Compositor as Compositor>::Surface,
     pub renderer: P::Renderer,
     pub redraw_at: RedrawRequest,
-    pub keyboards: FxHashSet<WlKeyboard>,
-    pub touches: FxHashMap<i32, Point>,
     preedit: Option<Preedit<P::Renderer>>,
     ime_state: Option<(Point, input_method::Purpose)>,
 }

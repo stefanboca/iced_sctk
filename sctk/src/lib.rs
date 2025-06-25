@@ -170,6 +170,7 @@ where
         pointers: FxHashMap::default(),
         touch: FxHashMap::default(),
 
+        keyboard_focuses: FxHashMap::default(),
         touches: FxHashMap::default(),
 
         is_daemon,
@@ -244,7 +245,8 @@ where
     pointers: FxHashMap<wl_seat::WlSeat, ThemedPointer>,
     touch: FxHashMap<wl_seat::WlSeat, wl_touch::WlTouch>,
 
-    touches: FxHashMap<wl_touch::WlTouch, FxHashMap<i32, core::window::Id>>,
+    keyboard_focuses: FxHashMap<wl_keyboard::WlKeyboard, core::window::Id>,
+    touches: FxHashMap<wl_touch::WlTouch, FxHashMap<i32, (core::window::Id, core::Point)>>,
 
     is_daemon: bool,
     error: Option<Error>,
@@ -1041,22 +1043,21 @@ impl<P: Program + 'static> SeatHandler for State<P> {
     ) {
         match capability {
             sctk::seat::Capability::Keyboard => {
-                if let Some(keyboard) = self.keyboards.remove(&seat) {
-                    for (id, window) in self.window_manager.iter_mut() {
-                        if window.keyboards.remove(&keyboard) {
-                            window
-                                .state
-                                .update_modifiers(sctk::seat::keyboard::Modifiers::default());
-                            self.events.push((
-                                id,
-                                core::Event::Keyboard(core::keyboard::Event::ModifiersChanged(
-                                    core::keyboard::Modifiers::default(),
-                                )),
-                            ));
-                            self.events
-                                .push((id, core::Event::Window(core::window::Event::Unfocused)));
-                        }
-                    }
+                if let Some(keyboard) = self.keyboards.remove(&seat)
+                    && let Some(id) = self.keyboard_focuses.remove(&keyboard)
+                    && let Some(window) = self.window_manager.get_mut(id)
+                {
+                    window
+                        .state
+                        .update_modifiers(sctk::seat::keyboard::Modifiers::default());
+                    self.events.push((
+                        id,
+                        core::Event::Keyboard(core::keyboard::Event::ModifiersChanged(
+                            core::keyboard::Modifiers::default(),
+                        )),
+                    ));
+                    self.events
+                        .push((id, core::Event::Window(core::window::Event::Unfocused)));
                 }
             }
             sctk::seat::Capability::Pointer => {
@@ -1085,8 +1086,8 @@ impl<P: Program + 'static> KeyboardHandler for State<P> {
         _: &[u32],
         _: &[sctk::seat::keyboard::Keysym],
     ) {
-        if let Some((id, window)) = self.window_manager.get_mut_alias(surface) {
-            let _ = window.keyboards.insert(keyboard.clone());
+        if let Some((id, _)) = self.window_manager.get_mut_alias(surface) {
+            let _ = self.keyboard_focuses.insert(keyboard.clone(), id);
             self.events
                 .push((id, core::Event::Window(core::window::Event::Focused)));
         }
@@ -1100,20 +1101,19 @@ impl<P: Program + 'static> KeyboardHandler for State<P> {
         surface: &wl_surface::WlSurface,
         _: u32,
     ) {
+        let _ = self.keyboard_focuses.remove(keyboard);
         if let Some((id, window)) = self.window_manager.get_mut_alias(surface) {
-            if window.keyboards.remove(keyboard) {
-                window
-                    .state
-                    .update_modifiers(sctk::seat::keyboard::Modifiers::default());
-                self.events.push((
-                    id,
-                    core::Event::Keyboard(core::keyboard::Event::ModifiersChanged(
-                        core::keyboard::Modifiers::default(),
-                    )),
-                ));
-                self.events
-                    .push((id, core::Event::Window(core::window::Event::Unfocused)));
-            }
+            window
+                .state
+                .update_modifiers(sctk::seat::keyboard::Modifiers::default());
+            self.events.push((
+                id,
+                core::Event::Keyboard(core::keyboard::Event::ModifiersChanged(
+                    core::keyboard::Modifiers::default(),
+                )),
+            ));
+            self.events
+                .push((id, core::Event::Window(core::window::Event::Unfocused)));
         }
     }
 
@@ -1125,24 +1125,21 @@ impl<P: Program + 'static> KeyboardHandler for State<P> {
         _: u32,
         key_event: sctk::seat::keyboard::KeyEvent,
     ) {
-        let key = conversion::keyboard::key(key_event.keysym);
-        let physical_key = conversion::keyboard::code(key_event.keysym, key_event.raw_code);
-        let location = conversion::keyboard::location(key_event.keysym);
-        let text = key_event.utf8.map(SmolStr::new);
-        for (id, window) in self.window_manager.iter_mut() {
-            if window.keyboards.contains(keyboard) {
-                self.events.push((
-                    id,
-                    core::Event::Keyboard(core::keyboard::Event::KeyPressed {
-                        key: key.clone(),
-                        modified_key: key.clone(), // TODO: actually get modified key
-                        physical_key,
-                        location,
-                        modifiers: conversion::keyboard::modifiers(window.state.modifiers()),
-                        text: text.clone(),
-                    }),
-                ));
-            }
+        if let Some(&id) = self.keyboard_focuses.get(keyboard)
+            && let Some(window) = self.window_manager.get_mut(id)
+        {
+            let key = conversion::keyboard::key(key_event.keysym);
+            self.events.push((
+                id,
+                core::Event::Keyboard(core::keyboard::Event::KeyPressed {
+                    key: key.clone(),
+                    modified_key: key.clone(), // TODO: actually get modified key
+                    physical_key: conversion::keyboard::code(key_event.keysym, key_event.raw_code),
+                    location: conversion::keyboard::location(key_event.keysym),
+                    modifiers: conversion::keyboard::modifiers(window.state.modifiers()),
+                    text: key_event.utf8.map(SmolStr::new),
+                }),
+            ));
         }
     }
 
@@ -1154,22 +1151,20 @@ impl<P: Program + 'static> KeyboardHandler for State<P> {
         _: u32,
         key_event: sctk::seat::keyboard::KeyEvent,
     ) {
-        let key = conversion::keyboard::key(key_event.keysym);
-        let physical_key = conversion::keyboard::code(key_event.keysym, key_event.raw_code);
-        let location = conversion::keyboard::location(key_event.keysym);
-        for (id, window) in self.window_manager.iter_mut() {
-            if window.keyboards.contains(keyboard) {
-                self.events.push((
-                    id,
-                    core::Event::Keyboard(core::keyboard::Event::KeyReleased {
-                        key: key.clone(),
-                        modified_key: key.clone(), // TODO: actually get modified key
-                        physical_key,
-                        location,
-                        modifiers: conversion::keyboard::modifiers(window.state.modifiers()),
-                    }),
-                ));
-            }
+        if let Some(&id) = self.keyboard_focuses.get(keyboard)
+            && let Some(window) = self.window_manager.get_mut(id)
+        {
+            let key = conversion::keyboard::key(key_event.keysym);
+            self.events.push((
+                id,
+                core::Event::Keyboard(core::keyboard::Event::KeyReleased {
+                    key: key.clone(),
+                    modified_key: key.clone(), // TODO: actually get modified key
+                    physical_key: conversion::keyboard::code(key_event.keysym, key_event.raw_code),
+                    location: conversion::keyboard::location(key_event.keysym),
+                    modifiers: conversion::keyboard::modifiers(window.state.modifiers()),
+                }),
+            ));
         }
     }
 
@@ -1182,17 +1177,16 @@ impl<P: Program + 'static> KeyboardHandler for State<P> {
         modifiers: sctk::seat::keyboard::Modifiers,
         _: u32,
     ) {
-        for (id, window) in self.window_manager.iter_mut() {
-            if window.keyboards.contains(keyboard) {
-                window.state.update_modifiers(modifiers);
-
-                self.events.push((
-                    id,
-                    core::Event::Keyboard(core::keyboard::Event::ModifiersChanged(
-                        conversion::keyboard::modifiers(modifiers),
-                    )),
-                ));
-            }
+        if let Some(&id) = self.keyboard_focuses.get(keyboard)
+            && let Some(window) = self.window_manager.get_mut(id)
+        {
+            window.state.update_modifiers(modifiers);
+            self.events.push((
+                id,
+                core::Event::Keyboard(core::keyboard::Event::ModifiersChanged(
+                    conversion::keyboard::modifiers(modifiers),
+                )),
+            ));
         }
     }
 }
@@ -1292,9 +1286,8 @@ impl<P: Program + 'static> TouchHandler for State<P> {
                 .touches
                 .entry(touch.clone())
                 .or_insert_with(|| FxHashMap::default());
-            let _ = touch_ids.insert(touch_id, id);
+            let _ = touch_ids.insert(touch_id, (id, position));
 
-            let _ = window.touches.insert(touch_id, position);
             window.state.update_cursor(Some(position));
             self.events.push((
                 id,
@@ -1316,9 +1309,7 @@ impl<P: Program + 'static> TouchHandler for State<P> {
         touch_id: i32,
     ) {
         if let Some(touch_ids) = self.touches.get_mut(touch)
-            && let Some(id) = touch_ids.remove(&touch_id)
-            && let Some(window) = self.window_manager.get_mut(id)
-            && let Some(position) = window.touches.remove(&touch_id)
+            && let Some((id, position)) = touch_ids.remove(&touch_id)
         {
             self.events.push((
                 id,
@@ -1337,19 +1328,19 @@ impl<P: Program + 'static> TouchHandler for State<P> {
         touch: &wl_touch::WlTouch,
         _: u32,
         touch_id: i32,
-        position: (f64, f64),
+        new_position: (f64, f64),
     ) {
-        if let Some(touch_ids) = self.touches.get(touch)
-            && let Some(&id) = touch_ids.get(&touch_id)
-            && let Some(window) = self.window_manager.get_mut(id)
+        if let Some(touch_ids) = self.touches.get_mut(touch)
+            && let Some((id, position)) = touch_ids.get_mut(&touch_id)
+            && let Some(window) = self.window_manager.get_mut(*id)
         {
-            let position = core::Point::new(position.0 as f32, position.1 as f32);
-            let _ = window.touches.insert(touch_id, position);
+            *position = core::Point::new(new_position.0 as f32, new_position.1 as f32);
+            window.state.update_cursor(Some(*position));
             self.events.push((
-                id,
+                *id,
                 core::Event::Touch(core::touch::Event::FingerMoved {
                     id: core::touch::Finger(touch_id as u64),
-                    position,
+                    position: *position,
                 }),
             ));
         }
@@ -1378,18 +1369,14 @@ impl<P: Program + 'static> TouchHandler for State<P> {
 
     fn cancel(&mut self, _: &Connection, _: &QueueHandle<Self>, touch: &wl_touch::WlTouch) {
         if let Some(touch_ids) = self.touches.remove(touch) {
-            for (touch_id, id) in touch_ids {
-                if let Some(window) = self.window_manager.get_mut(id)
-                    && let Some(position) = window.touches.remove(&touch_id)
-                {
-                    self.events.push((
-                        id,
-                        core::Event::Touch(core::touch::Event::FingerLost {
-                            id: core::touch::Finger(touch_id as u64),
-                            position,
-                        }),
-                    ));
-                }
+            for (touch_id, (id, position)) in touch_ids {
+                self.events.push((
+                    id,
+                    core::Event::Touch(core::touch::Event::FingerLost {
+                        id: core::touch::Finger(touch_id as u64),
+                        position,
+                    }),
+                ));
             }
         }
     }

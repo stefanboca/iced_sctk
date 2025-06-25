@@ -1,15 +1,18 @@
+use std::{cell::RefCell, pin::Pin, rc::Rc};
+
 use smithay_client_toolkit::reexports::calloop::{
-    ping::{make_ping, Ping, PingError, PingSource},
     EventSource, PostAction,
+    ping::{Ping, PingError, PingSource, make_ping},
 };
 
-use crate::futures::futures::{
-    channel::mpsc,
-    task::{Context, Poll},
-    Sink,
+use crate::{
+    futures::futures::{
+        Sink,
+        channel::mpsc,
+        task::{Context, Poll},
+    },
+    runtime::Action,
 };
-use crate::runtime::Action;
-use std::{cell::RefCell, pin::Pin, rc::Rc};
 
 const MAX_SIZE: usize = 100;
 
@@ -65,26 +68,17 @@ pub fn new<T: 'static>() -> (ProxySink<T>, ProxySource<T>) {
 impl<T: std::fmt::Debug + 'static> Sink<Action<T>> for ProxySink<T> {
     type Error = mpsc::SendError;
 
-    fn poll_ready(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
+    fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.sender.poll_ready(cx)
     }
 
-    fn start_send(
-        mut self: Pin<&mut Self>,
-        action: Action<T>,
-    ) -> Result<(), Self::Error> {
+    fn start_send(mut self: Pin<&mut Self>, action: Action<T>) -> Result<(), Self::Error> {
         self.sender.start_send(action).map(|()| {
             self.ping.ping();
         })
     }
 
-    fn poll_flush(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         match self.sender.poll_ready(cx) {
             Poll::Ready(Err(ref e)) if e.is_disconnected() => {
                 // If the receiver disconnected, we consider the sink to be flushed.
@@ -114,10 +108,7 @@ impl<T: 'static> EventSource for ProxySource<T> {
         readiness: smithay_client_toolkit::reexports::calloop::Readiness,
         token: smithay_client_toolkit::reexports::calloop::Token,
         mut callback: F,
-    ) -> Result<
-        smithay_client_toolkit::reexports::calloop::PostAction,
-        Self::Error,
-    >
+    ) -> Result<smithay_client_toolkit::reexports::calloop::PostAction, Self::Error>
     where
         F: FnMut(Self::Event, &mut Self::Metadata) -> Self::Ret,
     {

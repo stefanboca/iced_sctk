@@ -1,13 +1,13 @@
+use std::fmt::{Debug, Formatter};
+
 use iced_debug::core::Point;
-
-use crate::core::{mouse, theme, window};
-use crate::core::{Color, Size};
-use crate::graphics::Viewport;
-use crate::program::{self, Program};
-
 use smithay_client_toolkit as sctk;
 
-use std::fmt::{Debug, Formatter};
+use crate::{
+    core::{Color, Size, mouse, theme, window},
+    graphics::Viewport,
+    program::{self, Program},
+};
 
 /// The state of a multi-windowed [`Program`].
 pub struct State<P: Program>
@@ -57,10 +57,8 @@ where
         let theme = program.theme(window_id);
         let style = program.style(&theme);
 
-        let viewport = Viewport::with_physical_size(
-            physical_size,
-            window_scale_factor * scale_factor,
-        );
+        let viewport =
+            Viewport::with_physical_size(physical_size, window_scale_factor * scale_factor);
 
         Self {
             title,
@@ -136,10 +134,7 @@ where
         self.cursor_position = position;
     }
 
-    pub fn update_modifiers(
-        &mut self,
-        modifiers: sctk::seat::keyboard::Modifiers,
-    ) {
+    pub fn update_modifiers(&mut self, modifiers: sctk::seat::keyboard::Modifiers) {
         self.modifiers = modifiers;
     }
 
@@ -165,11 +160,7 @@ where
     ///
     /// Normally, a [`Program`] should be synchronized with its [`State`]
     /// and window after calling [`State::update`].
-    pub fn synchronize(
-        &mut self,
-        program: &program::Instance<P>,
-        window_id: window::Id,
-    ) {
+    pub fn synchronize(&mut self, program: &program::Instance<P>, window_id: window::Id) {
         // Update window title
         let new_title = program.title(window_id);
 

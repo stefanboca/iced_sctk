@@ -1,5 +1,4 @@
-use crate::futures::futures;
-use crate::graphics;
+use crate::{futures::futures, graphics};
 
 /// An error that occurred while running an application.
 #[derive(Debug, thiserror::Error)]

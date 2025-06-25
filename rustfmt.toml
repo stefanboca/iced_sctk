@@ -1,3 +1,2 @@
+max_width = 80
 edition = "2024"
-imports_granularity = "Crate"
-group_imports = "StdExternalCrate"

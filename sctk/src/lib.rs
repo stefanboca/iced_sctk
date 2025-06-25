@@ -2,17 +2,13 @@
 
 use std::time::Instant;
 
-use iced_debug::core::renderer;
-use iced_debug::core::widget::operation;
-use iced_debug::core::window::RedrawRequest;
-use iced_debug::core::SmolStr;
-use iced_debug::futures::futures::channel::oneshot;
+use iced_debug::{
+    core::{SmolStr, renderer, widget::operation, window::RedrawRequest},
+    futures::futures::channel::oneshot,
+};
 pub use iced_program as program;
-pub use program::core;
-pub use program::graphics;
-pub use program::runtime;
-pub use runtime::debug;
-pub use runtime::futures;
+pub use program::{core, graphics, runtime};
+pub use runtime::{debug, futures};
 #[cfg(feature = "system")]
 pub mod system;
 
@@ -22,65 +18,54 @@ mod error;
 mod proxy;
 mod window;
 
-use crate::clipboard::Clipboard;
-pub use crate::error::Error;
-use crate::window::RawWindow;
-use crate::window::WindowManager;
-
 use iced_debug::core::layer_shell;
-use iced_program::runtime::user_interface;
-use iced_program::runtime::UserInterface;
-
-use crate::core::theme;
-use crate::core::Settings;
-use crate::futures::subscription;
-use crate::futures::{Executor, Runtime};
-use crate::graphics::{compositor, Compositor};
-use crate::program::Program;
-use crate::proxy::ProxySink;
-use crate::runtime::Action;
-
+use iced_program::runtime::{UserInterface, user_interface};
 use rustc_hash::FxHashMap;
-use wayland_backend::client::ObjectId;
-
 use smithay_client_toolkit as sctk;
-
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
     output::{OutputHandler, OutputState},
     reexports::{
         calloop::{
-            timer::{TimeoutAction, Timer},
             Dispatcher, EventLoop, LoopHandle, LoopSignal, RegistrationToken,
+            timer::{TimeoutAction, Timer},
         },
         calloop_wayland_source::WaylandSource,
         client::{
-            delegate_noop,
+            Connection, Proxy, QueueHandle, delegate_noop,
             globals::registry_queue_init,
             protocol::{
-                wl_display, wl_keyboard, wl_output, wl_pointer, wl_seat,
-                wl_surface, wl_touch,
+                wl_display, wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface, wl_touch,
             },
-            Connection, Proxy, QueueHandle,
         },
         protocols::wp::text_input::zv3::client::zwp_text_input_manager_v3::ZwpTextInputManagerV3,
     },
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
     seat::{
+        SeatHandler, SeatState,
         keyboard::KeyboardHandler,
         pointer::{PointerHandler, ThemedPointer},
         touch::TouchHandler,
-        SeatHandler, SeatState,
     },
     shell::{
-        wlr_layer::{
-            self, LayerShell, LayerShellHandler, LayerSurface,
-            LayerSurfaceConfigure,
-        },
         WaylandSurface,
+        wlr_layer::{self, LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure},
     },
     shm::{Shm, ShmHandler},
+};
+use wayland_backend::client::ObjectId;
+
+pub use crate::error::Error;
+use crate::{
+    clipboard::Clipboard,
+    core::{Settings, theme},
+    futures::{Executor, Runtime, subscription},
+    graphics::{Compositor, compositor},
+    program::Program,
+    proxy::ProxySink,
+    runtime::Action,
+    window::{RawWindow, WindowManager},
 };
 
 /// Runs a [`Program`] with the provided settings.
@@ -95,8 +80,8 @@ where
 {
     let boot_span = debug::boot();
 
-    let mut event_loop: EventLoop<'_, State<P>> = EventLoop::try_new()
-        .expect("initializing the event loop should succeed");
+    let mut event_loop: EventLoop<'_, State<P>> =
+        EventLoop::try_new().expect("initializing the event loop should succeed");
     let loop_handle = event_loop.handle();
 
     let (proxy_sink, proxy_source) = crate::proxy::new();
@@ -207,10 +192,8 @@ where
     program: program::Instance<P>,
     #[borrows(program)]
     #[covariant]
-    user_interfaces: FxHashMap<
-        core::window::Id,
-        UserInterface<'this, P::Message, P::Theme, P::Renderer>,
-    >,
+    user_interfaces:
+        FxHashMap<core::window::Id, UserInterface<'this, P::Message, P::Theme, P::Renderer>>,
 }
 
 struct State<P>
@@ -277,9 +260,7 @@ impl<P: Program + 'static> State<P> {
             &self.qh,
             surface,
             match settings.layer {
-                core::layer_shell::Layer::Background => {
-                    wlr_layer::Layer::Background
-                }
+                core::layer_shell::Layer::Background => wlr_layer::Layer::Background,
                 core::layer_shell::Layer::Bottom => wlr_layer::Layer::Bottom,
                 core::layer_shell::Layer::Top => wlr_layer::Layer::Top,
                 core::layer_shell::Layer::Overlay => wlr_layer::Layer::Overlay,
@@ -289,9 +270,7 @@ impl<P: Program + 'static> State<P> {
         );
 
         layer_surface.set_size(settings.size.width, settings.size.height);
-        layer_surface.set_anchor(
-            wlr_layer::Anchor::from_bits(settings.anchor.bits()).unwrap(),
-        );
+        layer_surface.set_anchor(wlr_layer::Anchor::from_bits(settings.anchor.bits()).unwrap());
         layer_surface.set_exclusive_zone(settings.exclusive_zone);
         layer_surface.set_margin(
             settings.margin.top,
@@ -299,19 +278,17 @@ impl<P: Program + 'static> State<P> {
             settings.margin.bottom,
             settings.margin.left,
         );
-        layer_surface.set_keyboard_interactivity(
-            match settings.keyboard_interactivity {
-                core::layer_shell::KeyboardInteractivity::None => {
-                    wlr_layer::KeyboardInteractivity::None
-                }
-                core::layer_shell::KeyboardInteractivity::Exclusive => {
-                    wlr_layer::KeyboardInteractivity::Exclusive
-                }
-                core::layer_shell::KeyboardInteractivity::OnDemand => {
-                    wlr_layer::KeyboardInteractivity::OnDemand
-                }
-            },
-        );
+        layer_surface.set_keyboard_interactivity(match settings.keyboard_interactivity {
+            core::layer_shell::KeyboardInteractivity::None => {
+                wlr_layer::KeyboardInteractivity::None
+            }
+            core::layer_shell::KeyboardInteractivity::Exclusive => {
+                wlr_layer::KeyboardInteractivity::Exclusive
+            }
+            core::layer_shell::KeyboardInteractivity::OnDemand => {
+                wlr_layer::KeyboardInteractivity::OnDemand
+            }
+        });
 
         layer_surface.commit();
 
@@ -319,19 +296,14 @@ impl<P: Program + 'static> State<P> {
             surface_id,
             InProgressWindow {
                 id,
-                raw_window: RawWindow::Layer(
-                    self.display.clone(),
-                    layer_surface,
-                ),
+                raw_window: RawWindow::Layer(self.display.clone(), layer_surface),
                 sender,
             },
         );
     }
 
     fn close_window(&mut self, id: core::window::Id) {
-        if !self.is_daemon
-            && self.in_progress_windows.is_empty()
-            && self.window_manager.is_empty()
+        if !self.is_daemon && self.in_progress_windows.is_empty() && self.window_manager.is_empty()
         {
             self.exit(None);
             return;
@@ -340,10 +312,8 @@ impl<P: Program + 'static> State<P> {
         // NOTE: when implementing normal windows, remember to properly handle exit_on_close_request = false
 
         if let Some(program_wrapper) = self.program_wrapper.as_mut() {
-            let _ =
-                program_wrapper.with_user_interfaces_mut(|user_interfaces| {
-                    user_interfaces.remove(&id)
-                });
+            let _ = program_wrapper
+                .with_user_interfaces_mut(|user_interfaces| user_interfaces.remove(&id));
         }
 
         if let Some(window) = self.window_manager.remove(id) {
@@ -364,8 +334,7 @@ impl<P: Program + 'static> State<P> {
         for (_, window) in self.window_manager.iter_mut() {
             if let RedrawRequest::At(redraw_at) = window.redraw_at {
                 if redraw_at <= now {
-                    window
-                        .request_redraw(core::window::RedrawRequest::NextFrame);
+                    window.request_redraw(core::window::RedrawRequest::NextFrame);
                 }
             }
         }
@@ -396,10 +365,7 @@ impl<P: Program + 'static> State<P> {
             self.actions = 0;
         }
 
-        if self.events.is_empty()
-            && self.messages.is_empty()
-            && self.window_manager.is_idle()
-        {
+        if self.events.is_empty() && self.messages.is_empty() && self.window_manager.is_idle() {
             return;
         }
 
@@ -426,8 +392,8 @@ impl<P: Program + 'static> State<P> {
                 continue;
             }
 
-            let (ui_state, statuses) = program_wrapper
-                .with_user_interfaces_mut(|user_interfaces| {
+            let (ui_state, statuses) =
+                program_wrapper.with_user_interfaces_mut(|user_interfaces| {
                     user_interfaces
                         .get_mut(&id)
                         .expect("Get user interface")
@@ -454,9 +420,7 @@ impl<P: Program + 'static> State<P> {
                 }
             }
 
-            for (event, status) in
-                window_events.into_iter().zip(statuses.into_iter())
-            {
+            for (event, status) in window_events.into_iter().zip(statuses.into_iter()) {
                 self.runtime.broadcast(subscription::Event::Interaction {
                     window: id,
                     event,
@@ -478,15 +442,13 @@ impl<P: Program + 'static> State<P> {
         if !self.messages.is_empty() || uis_stale {
             let mut program_wrapper = self.program_wrapper.take().unwrap();
 
-            let mut cached_user_interfaces: FxHashMap<
-                core::window::Id,
-                user_interface::Cache,
-            > = program_wrapper.with_user_interfaces_mut(|user_interfaces| {
-                user_interfaces
-                    .drain()
-                    .map(|(id, ui)| (id, ui.into_cache()))
-                    .collect()
-            });
+            let mut cached_user_interfaces: FxHashMap<core::window::Id, user_interface::Cache> =
+                program_wrapper.with_user_interfaces_mut(|user_interfaces| {
+                    user_interfaces
+                        .drain()
+                        .map(|(id, ui)| (id, ui.into_cache()))
+                        .collect()
+                });
 
             let mut program = program_wrapper.into_heads().program;
 
@@ -499,8 +461,7 @@ impl<P: Program + 'static> State<P> {
             }
 
             let subscription = self.runtime.enter(|| program.subscription());
-            let recipes =
-                subscription::into_recipes(subscription.map(Action::Output));
+            let recipes = subscription::into_recipes(subscription.map(Action::Output));
 
             self.runtime.track(recipes);
 
@@ -510,9 +471,9 @@ impl<P: Program + 'static> State<P> {
             }
 
             debug::theme_changed(|| {
-                self.window_manager.first().and_then(|window| {
-                    theme::Base::palette(window.state.theme())
-                })
+                self.window_manager
+                    .first()
+                    .and_then(|window| theme::Base::palette(window.state.theme()))
             });
 
             self.program_wrapper = Some(
@@ -547,8 +508,7 @@ impl<P: Program + 'static> State<P> {
 
     fn run_action(&mut self, action: Action<P::Message>) {
         // use crate::runtime::clipboard;
-        use crate::runtime::layer_shell;
-        use crate::runtime::system;
+        use crate::runtime::{layer_shell, system};
         // use crate::runtime::window;
 
         self.actions += 1;
@@ -574,8 +534,7 @@ impl<P: Program + 'static> State<P> {
                             let graphics_info = compositor.fetch_information();
 
                             let _ = std::thread::spawn(move || {
-                                let information =
-                                    crate::system::information(graphics_info);
+                                let information = crate::system::information(graphics_info);
 
                                 let _ = _channel.send(information);
                             });
@@ -590,13 +549,8 @@ impl<P: Program + 'static> State<P> {
                 program_wrapper.with_user_interfaces_mut(|user_interfaces| {
                     while let Some(mut operation) = current_operation.take() {
                         for (id, ui) in user_interfaces.iter_mut() {
-                            if let Some(window) =
-                                self.window_manager.get_mut(*id)
-                            {
-                                ui.operate(
-                                    &window.renderer,
-                                    operation.as_mut(),
-                                );
+                            if let Some(window) = self.window_manager.get_mut(*id) {
+                                ui.operate(&window.renderer, operation.as_mut());
                             }
                         }
 
@@ -693,8 +647,7 @@ impl<P: Program + 'static> CompositorHandler for State<P> {
         let Some(compositor) = &mut self.compositor else {
             return;
         };
-        let Some((id, window)) = self.window_manager.get_mut_alias(surface)
-        else {
+        let Some((id, window)) = self.window_manager.get_mut_alias(surface) else {
             return;
         };
         window.redraw_at = core::window::RedrawRequest::Wait;
@@ -712,13 +665,9 @@ impl<P: Program + 'static> CompositorHandler for State<P> {
 
             program_wrapper.with_user_interfaces_mut(|user_interfaces| {
                 let layout_span = debug::layout(id);
-                let ui =
-                    user_interfaces.remove(&id).expect("Remove user interface");
+                let ui = user_interfaces.remove(&id).expect("Remove user interface");
 
-                let _ = user_interfaces.insert(
-                    id,
-                    ui.relayout(logical_size, &mut window.renderer),
-                );
+                let _ = user_interfaces.insert(id, ui.relayout(logical_size, &mut window.renderer));
                 layout_span.finish();
             });
 
@@ -731,38 +680,35 @@ impl<P: Program + 'static> CompositorHandler for State<P> {
             window.viewport_version = window.state.viewport_version();
         }
 
-        let redraw_event = core::Event::Layer(
-            layer_shell::Event::RedrawRequested(Instant::now()),
-        );
+        let redraw_event = core::Event::Layer(layer_shell::Event::RedrawRequested(Instant::now()));
 
         let cursor = window.state.cursor();
 
-        let ui_state =
-            program_wrapper.with_user_interfaces_mut(|user_interfaces| {
-                let ui = user_interfaces.get_mut(&id).unwrap();
+        let ui_state = program_wrapper.with_user_interfaces_mut(|user_interfaces| {
+            let ui = user_interfaces.get_mut(&id).unwrap();
 
-                let draw_span = debug::draw(id);
-                let (ui_state, _) = ui.update(
-                    std::slice::from_ref(&redraw_event),
-                    cursor,
-                    &mut window.renderer,
-                    &mut self.clipboard,
-                    &mut self.messages,
-                );
+            let draw_span = debug::draw(id);
+            let (ui_state, _) = ui.update(
+                std::slice::from_ref(&redraw_event),
+                cursor,
+                &mut window.renderer,
+                &mut self.clipboard,
+                &mut self.messages,
+            );
 
-                ui.draw(
-                    &mut window.renderer,
-                    window.state.theme(),
-                    &renderer::Style {
-                        text_color: window.state.text_color(),
-                    },
-                    cursor,
-                );
+            ui.draw(
+                &mut window.renderer,
+                window.state.theme(),
+                &renderer::Style {
+                    text_color: window.state.text_color(),
+                },
+                cursor,
+            );
 
-                draw_span.finish();
+            draw_span.finish();
 
-                ui_state
-            });
+            ui_state
+        });
 
         self.runtime.broadcast(subscription::Event::Interaction {
             window: id,
@@ -804,8 +750,7 @@ impl<P: Program + 'static> CompositorHandler for State<P> {
 
                 // Try rendering all windows again next frame.
                 for (_, window) in self.window_manager.iter_mut() {
-                    window
-                        .request_redraw(core::window::RedrawRequest::NextFrame);
+                    window.request_redraw(core::window::RedrawRequest::NextFrame);
                 }
             }
             _ => {}
@@ -836,32 +781,20 @@ impl<P: Program + 'static> OutputHandler for State<P> {
         &mut self.output_state
     }
 
-    fn new_output(
-        &mut self,
-        _: &Connection,
-        _: &QueueHandle<Self>,
-        output: wl_output::WlOutput,
-    ) {
+    fn new_output(&mut self, _: &Connection, _: &QueueHandle<Self>, output: wl_output::WlOutput) {
         // TODO: add more info
         self.runtime
             .broadcast(subscription::Event::PlatformSpecific(
-                subscription::PlatformSpecific::Wayland(
-                    subscription::Wayland::OutputAdded(
-                        self.output_state
-                            .info(&output)
-                            .and_then(|o| o.name)
-                            .unwrap_or_default(),
-                    ),
-                ),
+                subscription::PlatformSpecific::Wayland(subscription::Wayland::OutputAdded(
+                    self.output_state
+                        .info(&output)
+                        .and_then(|o| o.name)
+                        .unwrap_or_default(),
+                )),
             ));
     }
 
-    fn update_output(
-        &mut self,
-        _: &Connection,
-        _: &QueueHandle<Self>,
-        _: wl_output::WlOutput,
-    ) {
+    fn update_output(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_output::WlOutput) {
         // TODO: handle this
     }
 
@@ -873,25 +806,18 @@ impl<P: Program + 'static> OutputHandler for State<P> {
     ) {
         self.runtime
             .broadcast(subscription::Event::PlatformSpecific(
-                subscription::PlatformSpecific::Wayland(
-                    subscription::Wayland::OutputRemoved(
-                        self.output_state
-                            .info(&output)
-                            .and_then(|o| o.name)
-                            .unwrap_or_default(),
-                    ),
-                ),
+                subscription::PlatformSpecific::Wayland(subscription::Wayland::OutputRemoved(
+                    self.output_state
+                        .info(&output)
+                        .and_then(|o| o.name)
+                        .unwrap_or_default(),
+                )),
             ));
     }
 }
 
 impl<P: Program + 'static> LayerShellHandler for State<P> {
-    fn closed(
-        &mut self,
-        _: &Connection,
-        _: &QueueHandle<Self>,
-        layer_surface: &LayerSurface,
-    ) {
+    fn closed(&mut self, _: &Connection, _: &QueueHandle<Self>, layer_surface: &LayerSurface) {
         if let Some((id, _)) = self
             .window_manager
             .get_mut_alias(layer_surface.wl_surface())
@@ -908,8 +834,7 @@ impl<P: Program + 'static> LayerShellHandler for State<P> {
         configure: LayerSurfaceConfigure,
         _: u32,
     ) {
-        let physical_size =
-            core::Size::new(configure.new_size.0, configure.new_size.1);
+        let physical_size = core::Size::new(configure.new_size.0, configure.new_size.1);
 
         let Some(InProgressWindow {
             id,
@@ -936,12 +861,11 @@ impl<P: Program + 'static> LayerShellHandler for State<P> {
             let window = raw_window.clone();
 
             let compositor = self.runtime.block_on(async move {
-                let mut compositor =
-                    <P::Renderer as compositor::Default>::Compositor::new(
-                        graphics_settings,
-                        window,
-                    )
-                    .await;
+                let mut compositor = <P::Renderer as compositor::Default>::Compositor::new(
+                    graphics_settings,
+                    window,
+                )
+                .await;
                 if let Ok(compositor) = &mut compositor {
                     for font in default_fonts {
                         compositor.load_font(font.clone());
@@ -961,8 +885,7 @@ impl<P: Program + 'static> LayerShellHandler for State<P> {
 
         debug::theme_changed(|| {
             if self.window_manager.is_empty() {
-                let program =
-                    self.program_wrapper.as_ref().unwrap().borrow_program();
+                let program = self.program_wrapper.as_ref().unwrap().borrow_program();
                 theme::Base::palette(&program.theme(id))
             } else {
                 None
@@ -1014,13 +937,7 @@ impl<P: Program + 'static> SeatHandler for State<P> {
         &mut self.seat_state
     }
 
-    fn new_seat(
-        &mut self,
-        _: &Connection,
-        _: &QueueHandle<Self>,
-        _: wl_seat::WlSeat,
-    ) {
-    }
+    fn new_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}
 
     fn new_capability(
         &mut self,
@@ -1031,9 +948,7 @@ impl<P: Program + 'static> SeatHandler for State<P> {
     ) {
         match capability {
             sctk::seat::Capability::Keyboard => {
-                if let Ok(keyboard) =
-                    self.seat_state.get_keyboard(&self.qh, &seat, None)
-                {
+                if let Ok(keyboard) = self.seat_state.get_keyboard(&self.qh, &seat, None) {
                     let _ = self.keyboards.insert(seat.id(), keyboard);
                 }
             }
@@ -1078,13 +993,7 @@ impl<P: Program + 'static> SeatHandler for State<P> {
         }
     }
 
-    fn remove_seat(
-        &mut self,
-        _: &Connection,
-        _: &QueueHandle<Self>,
-        _: wl_seat::WlSeat,
-    ) {
-    }
+    fn remove_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}
 }
 
 impl<P: Program + 'static> KeyboardHandler for State<P> {
@@ -1134,8 +1043,7 @@ impl<P: Program + 'static> KeyboardHandler for State<P> {
         key_event: sctk::seat::keyboard::KeyEvent,
     ) {
         let key = conversion::keyboard::key(key_event.keysym);
-        let physical_key =
-            conversion::keyboard::code(key_event.keysym, key_event.raw_code);
+        let physical_key = conversion::keyboard::code(key_event.keysym, key_event.raw_code);
         let location = conversion::keyboard::location(key_event.keysym);
         let text = key_event.utf8.map(SmolStr::new);
         for (id, window) in self.window_manager.iter_mut() {
@@ -1147,9 +1055,7 @@ impl<P: Program + 'static> KeyboardHandler for State<P> {
                         modified_key: key.clone(), // TODO: actually get modified key
                         physical_key,
                         location,
-                        modifiers: conversion::keyboard::modifiers(
-                            window.state.modifiers(),
-                        ),
+                        modifiers: conversion::keyboard::modifiers(window.state.modifiers()),
                         text: text.clone(),
                     }),
                 ));
@@ -1166,8 +1072,7 @@ impl<P: Program + 'static> KeyboardHandler for State<P> {
         key_event: sctk::seat::keyboard::KeyEvent,
     ) {
         let key = conversion::keyboard::key(key_event.keysym);
-        let physical_key =
-            conversion::keyboard::code(key_event.keysym, key_event.raw_code);
+        let physical_key = conversion::keyboard::code(key_event.keysym, key_event.raw_code);
         let location = conversion::keyboard::location(key_event.keysym);
         for (id, window) in self.window_manager.iter_mut() {
             if window.keyboards.contains(&keyboard.id()) {
@@ -1178,9 +1083,7 @@ impl<P: Program + 'static> KeyboardHandler for State<P> {
                         modified_key: key.clone(), // TODO: actually get modified key
                         physical_key,
                         location,
-                        modifiers: conversion::keyboard::modifiers(
-                            window.state.modifiers(),
-                        ),
+                        modifiers: conversion::keyboard::modifiers(window.state.modifiers()),
                     }),
                 ));
             }
@@ -1202,11 +1105,9 @@ impl<P: Program + 'static> KeyboardHandler for State<P> {
 
                 self.events.push((
                     id,
-                    core::Event::Keyboard(
-                        core::keyboard::Event::ModifiersChanged(
-                            conversion::keyboard::modifiers(modifiers),
-                        ),
-                    ),
+                    core::Event::Keyboard(core::keyboard::Event::ModifiersChanged(
+                        conversion::keyboard::modifiers(modifiers),
+                    )),
                 ));
             }
         }
@@ -1231,33 +1132,25 @@ impl<P: Program + 'static> PointerHandler for State<P> {
             kind,
         } in events
         {
-            if let Some((id, window)) =
-                self.window_manager.get_mut_alias(surface)
-            {
+            if let Some((id, window)) = self.window_manager.get_mut_alias(surface) {
                 let position = core::Point::new(position.0, position.1);
                 match kind {
                     PEK::Enter { .. } => {
                         window.state.update_cursor(Some(position));
-                        self.events.push((
-                            id,
-                            core::Event::Mouse(
-                                core::mouse::Event::CursorEntered,
-                            ),
-                        ));
+                        self.events
+                            .push((id, core::Event::Mouse(core::mouse::Event::CursorEntered)));
                     }
                     PEK::Motion { .. } => {
                         let scale_factor = window.state.scale_factor();
                         window.state.update_cursor(Some(position));
                         self.events.push((
                             id,
-                            core::Event::Mouse(
-                                core::mouse::Event::CursorMoved {
-                                    position: core::Point::new(
-                                        (position.x / scale_factor) as f32,
-                                        (position.y / scale_factor) as f32,
-                                    ),
-                                },
-                            ),
+                            core::Event::Mouse(core::mouse::Event::CursorMoved {
+                                position: core::Point::new(
+                                    (position.x / scale_factor) as f32,
+                                    (position.y / scale_factor) as f32,
+                                ),
+                            }),
                         ));
                     }
                     PEK::Press { button, .. } => self.events.push((
@@ -1287,10 +1180,8 @@ impl<P: Program + 'static> PointerHandler for State<P> {
                     )),
                     PEK::Leave { .. } => {
                         window.state.update_cursor(None);
-                        self.events.push((
-                            id,
-                            core::Event::Mouse(core::mouse::Event::CursorLeft),
-                        ));
+                        self.events
+                            .push((id, core::Event::Mouse(core::mouse::Event::CursorLeft)));
                     }
                 }
             }
@@ -1357,13 +1248,7 @@ impl<P: Program + 'static> TouchHandler for State<P> {
     ) {
     }
 
-    fn cancel(
-        &mut self,
-        _: &Connection,
-        _: &QueueHandle<Self>,
-        _: &wl_touch::WlTouch,
-    ) {
-    }
+    fn cancel(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_touch::WlTouch) {}
 }
 
 impl<P: Program + 'static> ShmHandler for State<P> {

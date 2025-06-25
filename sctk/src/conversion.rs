@@ -1,11 +1,13 @@
-use crate::core;
 use smithay_client_toolkit as sctk;
+
+use crate::core;
 
 pub mod mouse {
     use super::{core, sctk};
 
     pub fn button(button: u32) -> core::mouse::Button {
         use core::mouse::Button;
+
         use sctk::seat::pointer::*;
 
         match button {
@@ -24,9 +26,7 @@ pub mod keyboard {
 
     use super::{core, sctk};
 
-    pub fn modifiers(
-        modifiers: sctk::seat::keyboard::Modifiers,
-    ) -> core::keyboard::Modifiers {
+    pub fn modifiers(modifiers: sctk::seat::keyboard::Modifiers) -> core::keyboard::Modifiers {
         let mut m = core::keyboard::Modifiers::empty();
 
         if modifiers.shift {
@@ -46,7 +46,8 @@ pub mod keyboard {
     }
 
     pub fn key(keysym: sctk::seat::keyboard::Keysym) -> core::keyboard::Key {
-        use core::keyboard::{key::Named as N, Key as IK};
+        use core::keyboard::{Key as IK, key::Named as N};
+
         use sctk::seat::keyboard::Keysym as SK;
         IK::Named(match keysym {
             SK::Alt_L | SK::Alt_R => N::Alt,
@@ -79,9 +80,7 @@ pub mod keyboard {
             _ => {
                 if let Some(char) = keysym.key_char() {
                     let mut b = [0; 4];
-                    return IK::Character(SmolStr::new_inline(
-                        char.encode_utf8(&mut b),
-                    ));
+                    return IK::Character(SmolStr::new_inline(char.encode_utf8(&mut b)));
                 }
 
                 return IK::Unidentified;
@@ -94,6 +93,7 @@ pub mod keyboard {
         raw_code: u32,
     ) -> core::keyboard::key::Physical {
         use core::keyboard::key::{Code as C, NativeCode, Physical};
+
         use sctk::seat::keyboard::Keysym as SK;
         Physical::Code(match keysym {
             SK::Caps_Lock => C::CapsLock,
@@ -122,32 +122,21 @@ pub mod keyboard {
         })
     }
 
-    pub fn location(
-        keysym: sctk::seat::keyboard::Keysym,
-    ) -> core::keyboard::Location {
+    pub fn location(keysym: sctk::seat::keyboard::Keysym) -> core::keyboard::Location {
         use core::keyboard::Location;
+
         use sctk::seat::keyboard::Keysym as SK;
 
         if keysym.is_keypad_key() | keysym.is_private_keypad_key() {
             Location::Numpad
         } else if matches!(
             keysym,
-            SK::Alt_L
-                | SK::Control_R
-                | SK::Shift_L
-                | SK::Meta_L
-                | SK::Hyper_L
-                | SK::Super_L
+            SK::Alt_L | SK::Control_R | SK::Shift_L | SK::Meta_L | SK::Hyper_L | SK::Super_L
         ) {
             Location::Left
         } else if matches!(
             keysym,
-            SK::Alt_R
-                | SK::Shift_R
-                | SK::Control_R
-                | SK::Meta_R
-                | SK::Hyper_R
-                | SK::Super_R
+            SK::Alt_R | SK::Shift_R | SK::Control_R | SK::Meta_R | SK::Hyper_R | SK::Super_R
         ) {
             Location::Right
         } else {

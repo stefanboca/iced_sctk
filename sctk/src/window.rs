@@ -1,48 +1,32 @@
 mod state;
 
-use iced_debug::core::alignment;
-use iced_debug::core::renderer;
-use iced_debug::core::text;
-use iced_debug::core::Color;
-use iced_debug::core::Padding;
-use iced_debug::core::Rectangle;
-use iced_debug::core::Text;
-use iced_debug::core::Vector;
-use iced_program::runtime::window::raw_window_handle::DisplayHandle;
-use iced_program::runtime::window::raw_window_handle::HandleError;
-use iced_program::runtime::window::raw_window_handle::HasDisplayHandle;
-use iced_program::runtime::window::raw_window_handle::HasWindowHandle;
-use iced_program::runtime::window::raw_window_handle::RawDisplayHandle;
-use iced_program::runtime::window::raw_window_handle::RawWindowHandle;
-use iced_program::runtime::window::raw_window_handle::WaylandDisplayHandle;
-use iced_program::runtime::window::raw_window_handle::WaylandWindowHandle;
-use iced_program::runtime::window::raw_window_handle::WindowHandle;
-use rustc_hash::FxHashSet;
-use smithay_client_toolkit::reexports::client::protocol::wl_display::WlDisplay;
-use smithay_client_toolkit::reexports::client::Proxy;
-use smithay_client_toolkit::reexports::client::QueueHandle;
-use smithay_client_toolkit::shell::wlr_layer::LayerSurface;
-use smithay_client_toolkit::shell::WaylandSurface;
+use std::{collections::BTreeMap, ffi::c_void, ptr::NonNull};
+
+use iced_debug::core::{Color, Padding, Rectangle, Text, Vector, alignment, renderer, text};
+use iced_program::{
+    graphics::compositor,
+    runtime::window::raw_window_handle::{
+        DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle,
+        RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle, WindowHandle,
+    },
+};
+use rustc_hash::{FxHashMap, FxHashSet};
+use smithay_client_toolkit::{
+    reexports::client::{
+        Proxy, QueueHandle,
+        protocol::{wl_display::WlDisplay, wl_surface::WlSurface},
+    },
+    shell::{WaylandSurface, wlr_layer::LayerSurface},
+};
 use state::State;
-
-use std::collections::BTreeMap;
-use std::ffi::c_void;
-use std::ptr::NonNull;
-
-use iced_program::graphics::compositor;
-use rustc_hash::FxHashMap;
-use smithay_client_toolkit::reexports::client::protocol::wl_surface::WlSurface;
 use wayland_backend::client::ObjectId;
 
 pub use crate::core::window::{Id, RedrawRequest};
-
-use crate::core::input_method;
-use crate::core::mouse;
-use crate::core::theme;
-use crate::core::time::Instant;
-use crate::core::{InputMethod, Point, Size};
-use crate::graphics::Compositor;
-use crate::program::{self, Program};
+use crate::{
+    core::{InputMethod, Point, Size, input_method, mouse, theme, time::Instant},
+    graphics::Compositor,
+    program::{self, Program},
+};
 
 pub struct WindowManager<P>
 where
@@ -78,11 +62,8 @@ where
         let state = State::new(program, id, physical_size, scale_factor);
         let viewport_version = state.viewport_version();
 
-        let surface = compositor.create_surface(
-            window.clone(),
-            physical_size.width,
-            physical_size.height,
-        );
+        let surface =
+            compositor.create_surface(window.clone(), physical_size.width, physical_size.height);
         let renderer = compositor.create_renderer();
 
         let _ = self.aliases.insert(window.surface().id(), id);
@@ -143,10 +124,7 @@ where
         self.entries.get_mut(&id)
     }
 
-    pub fn get_mut_alias(
-        &mut self,
-        surface: &WlSurface,
-    ) -> Option<(Id, &mut Window<P>)> {
+    pub fn get_mut_alias(&mut self, surface: &WlSurface) -> Option<(Id, &mut Window<P>)> {
         let id = self.aliases.get(&surface.id()).copied()?;
 
         Some((id, self.get_mut(id)?))
@@ -261,8 +239,7 @@ where
                     if preedit.content.is_empty() {
                         self.preedit = None;
                     } else {
-                        let mut overlay =
-                            self.preedit.take().unwrap_or_else(Preedit::new);
+                        let mut overlay = self.preedit.take().unwrap_or_else(Preedit::new);
 
                         overlay.update(
                             position,
@@ -292,10 +269,7 @@ where
                 &mut self.renderer,
                 self.state.text_color(),
                 self.state.background_color(),
-                &Rectangle::new(
-                    Point::ORIGIN,
-                    self.state.viewport().logical_size(),
-                ),
+                &Rectangle::new(Point::ORIGIN, self.state.viewport().logical_size()),
             );
         }
     }
@@ -374,9 +348,7 @@ where
             self.content = Renderer::Paragraph::with_spans(Text {
                 content: &spans,
                 bounds: Size::INFINITY,
-                size: preedit
-                    .text_size
-                    .unwrap_or_else(|| renderer.default_size()),
+                size: preedit.text_size.unwrap_or_else(|| renderer.default_size()),
                 line_height: text::LineHeight::default(),
                 font: renderer.default_font(),
                 align_x: text::Alignment::Default,
@@ -391,13 +363,7 @@ where
         }
     }
 
-    fn draw(
-        &self,
-        renderer: &mut Renderer,
-        color: Color,
-        background: Color,
-        viewport: &Rectangle,
-    ) {
+    fn draw(&self, renderer: &mut Renderer, color: Color, background: Color, viewport: &Rectangle) {
         use text::Paragraph as _;
 
         if self.content.min_width() < 1.0 {
@@ -428,12 +394,7 @@ where
                 background,
             );
 
-            renderer.fill_paragraph(
-                &self.content,
-                bounds.position(),
-                color,
-                bounds,
-            );
+            renderer.fill_paragraph(&self.content, bounds.position(), color, bounds);
 
             const UNDERLINE: f32 = 2.0;
 
@@ -451,8 +412,7 @@ where
             for span_bounds in self.content.span_bounds(1) {
                 renderer.fill_quad(
                     renderer::Quad {
-                        bounds: span_bounds
-                            + (bounds.position() - Point::ORIGIN),
+                        bounds: span_bounds + (bounds.position() - Point::ORIGIN),
                         ..Default::default()
                     },
                     color,

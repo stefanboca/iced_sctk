@@ -1,0 +1,32 @@
+[package]
+name = "iced_sctk"
+description = "A runtime for iced on top of smithay-client-toolkit"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+debug = ["iced_debug/enable"]
+system = ["dep:sysinfo"]
+
+[dependencies]
+iced_debug.workspace = true
+iced_program.workspace = true
+
+log.workspace = true
+ouroboros.workspace = true
+rustc-hash.workspace = true
+smithay-client-toolkit = { workspace = true, features = [
+  "calloop",
+  "xkbcommon",
+] }
+thiserror.workspace = true
+tracing.workspace = true
+wayland-backend = { workspace = true, features = ["client_system"] }
+
+sysinfo = { workspace = true, optional = true }

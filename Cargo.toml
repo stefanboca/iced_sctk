@@ -1,0 +1,161 @@
+[package]
+name = "iced"
+description = "A cross-platform GUI library inspired by Elm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = [
+  "wgpu",
+  "tiny-skia",
+  "web-colors",
+  "auto-detect-theme",
+  "thread-pool",
+]
+# Enables the `wgpu` GPU-accelerated renderer backend
+wgpu = ["iced_renderer/wgpu", "iced_widget/wgpu"]
+# Enables the `tiny-skia` software renderer backend
+tiny-skia = ["iced_renderer/tiny-skia"]
+# Enables the `image` widget
+image = ["image-without-codecs", "image/default"]
+# Enables the `image` widget, without any built-in codecs of the `image` crate
+image-without-codecs = ["iced_widget/image", "dep:image"]
+# Enables the `svg` widget
+svg = ["iced_widget/svg"]
+# Enables the `canvas` widget
+canvas = ["iced_widget/canvas"]
+# Enables the `qr_code` widget
+qr_code = ["iced_widget/qr_code"]
+# Enables the `markdown` widget
+markdown = ["iced_widget/markdown"]
+# Enables lazy widgets
+lazy = ["iced_widget/lazy"]
+# Enables a debug view in native platforms (press F12)
+debug = ["iced_sctk/debug", "iced_devtools"]
+# Enables time-travel debugging (very experimental!)
+time-travel = ["debug", "iced_devtools/time-travel"]
+# Enables the `thread-pool` futures executor as the `executor::Default` on native platforms
+thread-pool = ["iced_futures/thread-pool"]
+# Enables `tokio` as the `executor::Default` on native platforms
+tokio = ["iced_futures/tokio"]
+# Enables `smol` as the `executor::Default` on native platforms
+smol = ["iced_futures/smol"]
+# Enables querying system information
+system = ["iced_sctk/system"]
+# Enables broken "sRGB linear" blending to reproduce color management of the Web
+web-colors = ["iced_renderer/web-colors"]
+# Enables pixel snapping for crisp edges by default (can cause jitter!)
+crisp = ["iced_core/crisp", "iced_widget/crisp"]
+# Enables the WebGL backend
+webgl = ["iced_renderer/webgl"]
+# Enables syntax highligthing
+highlighter = ["iced_highlighter", "iced_widget/highlighter"]
+# Enables the advanced module
+advanced = ["iced_core/advanced", "iced_widget/advanced"]
+# Embeds Fira Sans into the final application; useful for testing and Wasm builds
+fira-sans = ["iced_renderer/fira-sans"]
+# Auto-detects light/dark mode for the built-in theme
+auto-detect-theme = ["iced_core/auto-detect-theme"]
+# Enables strict assertions for debugging purposes at the expense of performance
+strict-assertions = ["iced_renderer/strict-assertions"]
+# Enables support for the `sipper` library
+sipper = ["iced_runtime/sipper"]
+
+[dependencies]
+iced_debug.workspace = true
+iced_core.workspace = true
+iced_futures.workspace = true
+iced_renderer.workspace = true
+iced_runtime.workspace = true
+iced_widget.workspace = true
+iced_sctk.workspace = true
+
+iced_devtools.workspace = true
+iced_devtools.optional = true
+
+iced_highlighter.workspace = true
+iced_highlighter.optional = true
+
+thiserror.workspace = true
+
+image.workspace = true
+image.optional = true
+
+[profile.release-opt]
+inherits = "release"
+codegen-units = 1
+debug = false
+lto = true
+incremental = false
+opt-level = 3
+overflow-checks = false
+strip = "debuginfo"
+
+[workspace]
+members = ["sctk"]
+
+[workspace.package]
+version = "0.14.0-dev"
+authors = []
+edition = "2024"
+license = "MIT"
+rust-version = "1.87"
+
+[workspace.dependencies]
+iced = { version = "0.14.0-dev", path = "." }
+iced_sctk = { version = "0.14.0-dev", path = "sctk" }
+
+iced_core = { git = "https://github.com/stefanboca/iced" }
+iced_debug = { git = "https://github.com/stefanboca/iced" }
+iced_devtools = { git = "https://github.com/stefanboca/iced" }
+iced_futures = { git = "https://github.com/stefanboca/iced" }
+iced_highlighter = { git = "https://github.com/stefanboca/iced" }
+iced_program = { git = "https://github.com/stefanboca/iced" }
+iced_renderer = { git = "https://github.com/stefanboca/iced" }
+iced_runtime = { git = "https://github.com/stefanboca/iced" }
+iced_test = { git = "https://github.com/stefanboca/iced" }
+iced_widget = { git = "https://github.com/stefanboca/iced" }
+
+image = "0.25.6"
+log = "0.4.27"
+ouroboros = "0.18.5"
+rustc-hash = "2.1.1"
+smithay-client-toolkit = { version = "0.19.2", default-features = false }
+sysinfo = "0.35.2"
+thiserror = "2.0.12"
+tracing = "0.1.41"
+wayland-backend = "0.3.10"
+
+[workspace.lints.rust]
+rust_2018_idioms = { level = "deny", priority = -1 }
+missing_debug_implementations = "deny"
+missing_docs = "deny"
+unsafe_code = "deny"
+unused_results = "deny"
+
+[workspace.lints.clippy]
+type-complexity = "allow"
+map-entry = "allow"
+large-enum-variant = "allow"
+result_large_err = "allow"
+semicolon_if_nothing_returned = "deny"
+trivially-copy-pass-by-ref = "deny"
+default_trait_access = "deny"
+match-wildcard-for-single-variants = "deny"
+redundant-closure-for-method-calls = "deny"
+filter_map_next = "deny"
+manual_let_else = "deny"
+unused_async = "deny"
+from_over_into = "deny"
+needless_borrow = "deny"
+new_without_default = "deny"
+useless_conversion = "deny"
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "forbid"

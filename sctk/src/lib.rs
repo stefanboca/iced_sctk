@@ -985,6 +985,7 @@ impl<P: Program + 'static> LayerShellHandler for State<P> {
         // TODO: clipboard
 
         let _ = sender.send(id);
+        window.request_redraw(RedrawRequest::NextFrame);
     }
 }
 

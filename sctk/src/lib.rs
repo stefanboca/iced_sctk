@@ -36,7 +36,7 @@ use sctk::{
             protocol::{
                 wl_display, wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface, wl_touch,
             },
-            Connection, Proxy, QueueHandle,
+            Connection, QueueHandle,
         },
         protocols::wp::text_input::zv3::client::zwp_text_input_manager_v3::ZwpTextInputManagerV3,
     },
@@ -896,9 +896,7 @@ impl<P: Program + 'static> LayerShellHandler for State<P> {
             id,
             raw_window,
             sender,
-        }) = self
-            .in_progress_windows
-            .remove(&layer_surface.wl_surface().id())
+        }) = self.in_progress_windows.remove(layer_surface.wl_surface())
         else {
             if let Some((id, window)) = self
                 .window_manager
@@ -1011,25 +1009,7 @@ impl<P: Program + 'static> SeatHandler for State<P> {
         match capability {
             sctk::seat::Capability::Keyboard => {
                 if let Ok(keyboard) = self.seat_state.get_keyboard(&self.qh, &seat, None) {
-                    if let Some(keyboard) = self.keyboards.insert(seat, keyboard) {
-                        for (id, window) in self.window_manager.iter_mut() {
-                            if window.keyboards.remove(&keyboard) {
-                                window
-                                    .state
-                                    .update_modifiers(sctk::seat::keyboard::Modifiers::default());
-                                self.events.push((
-                                    id,
-                                    core::Event::Keyboard(core::keyboard::Event::ModifiersChanged(
-                                        core::keyboard::Modifiers::default(),
-                                    )),
-                                ));
-                                self.events.push((
-                                    id,
-                                    core::Event::Window(core::window::Event::Unfocused),
-                                ));
-                            }
-                        }
-                    }
+                    let _ = self.keyboards.insert(seat, keyboard);
                 }
             }
             sctk::seat::Capability::Pointer => {
@@ -1061,13 +1041,29 @@ impl<P: Program + 'static> SeatHandler for State<P> {
     ) {
         match capability {
             sctk::seat::Capability::Keyboard => {
-                let _ = self.keyboards.remove(&seat.id());
+                if let Some(keyboard) = self.keyboards.remove(&seat) {
+                    for (id, window) in self.window_manager.iter_mut() {
+                        if window.keyboards.remove(&keyboard) {
+                            window
+                                .state
+                                .update_modifiers(sctk::seat::keyboard::Modifiers::default());
+                            self.events.push((
+                                id,
+                                core::Event::Keyboard(core::keyboard::Event::ModifiersChanged(
+                                    core::keyboard::Modifiers::default(),
+                                )),
+                            ));
+                            self.events
+                                .push((id, core::Event::Window(core::window::Event::Unfocused)));
+                        }
+                    }
+                }
             }
             sctk::seat::Capability::Pointer => {
-                let _ = self.pointers.remove(&seat.id());
+                let _ = self.pointers.remove(&seat);
             }
             sctk::seat::Capability::Touch => {
-                if let Some(touch) = self.touch.remove(&seat.id()) {
+                if let Some(touch) = self.touch.remove(&seat) {
                     self.cancel(conn, qh, &touch);
                 }
             }
@@ -1134,7 +1130,7 @@ impl<P: Program + 'static> KeyboardHandler for State<P> {
         let location = conversion::keyboard::location(key_event.keysym);
         let text = key_event.utf8.map(SmolStr::new);
         for (id, window) in self.window_manager.iter_mut() {
-            if window.keyboards.contains(&keyboard.id()) {
+            if window.keyboards.contains(keyboard) {
                 self.events.push((
                     id,
                     core::Event::Keyboard(core::keyboard::Event::KeyPressed {
@@ -1162,7 +1158,7 @@ impl<P: Program + 'static> KeyboardHandler for State<P> {
         let physical_key = conversion::keyboard::code(key_event.keysym, key_event.raw_code);
         let location = conversion::keyboard::location(key_event.keysym);
         for (id, window) in self.window_manager.iter_mut() {
-            if window.keyboards.contains(&keyboard.id()) {
+            if window.keyboards.contains(keyboard) {
                 self.events.push((
                     id,
                     core::Event::Keyboard(core::keyboard::Event::KeyReleased {
@@ -1187,7 +1183,7 @@ impl<P: Program + 'static> KeyboardHandler for State<P> {
         _: u32,
     ) {
         for (id, window) in self.window_manager.iter_mut() {
-            if window.keyboards.contains(&keyboard.id()) {
+            if window.keyboards.contains(keyboard) {
                 window.state.update_modifiers(modifiers);
 
                 self.events.push((

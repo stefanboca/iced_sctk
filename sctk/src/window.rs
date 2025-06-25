@@ -124,14 +124,14 @@ where
     }
 
     pub fn get_mut_alias(&mut self, surface: &WlSurface) -> Option<(Id, &mut Window<P>)> {
-        let id = self.aliases.get(&surface.id()).copied()?;
+        let id = self.aliases.get(surface).copied()?;
 
         Some((id, self.get_mut(id)?))
     }
 
     pub fn remove(&mut self, id: Id) -> Option<Window<P>> {
         let window = self.entries.remove(&id)?;
-        let _ = self.aliases.remove(&window.raw.surface().id());
+        let _ = self.aliases.remove(window.raw.surface());
 
         Some(window)
     }

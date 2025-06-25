@@ -1,6 +1,6 @@
 mod state;
 
-use std::{collections::BTreeMap, ffi::c_void, ptr::NonNull};
+use std::{collections::BTreeMap, ffi::c_void, ptr::NonNull, rc::Rc};
 
 use iced_debug::core::{alignment, renderer, text, Color, Padding, Rectangle, Text, Vector};
 use iced_program::{
@@ -10,11 +10,11 @@ use iced_program::{
         RawWindowHandle, WaylandDisplayHandle, WaylandWindowHandle, WindowHandle,
     },
 };
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 use sctk::{
     reexports::client::{
         protocol::{wl_display::WlDisplay, wl_pointer::WlPointer, wl_surface::WlSurface},
-        Proxy, QueueHandle,
+        Connection, Proxy, QueueHandle,
     },
     seat::pointer::ThemedPointer,
     shell::{wlr_layer::LayerSurface, WaylandSurface},
@@ -52,6 +52,7 @@ where
     pub fn insert(
         &mut self,
         id: Id,
+        conn: Connection,
         qh: QueueHandle<crate::State<P>>,
         window: RawWindow,
         surface_size: Size<u32>,
@@ -71,6 +72,7 @@ where
             id,
             Window {
                 qh,
+                conn,
                 raw: window,
                 state,
                 viewport_version,
@@ -78,7 +80,7 @@ where
                 renderer,
                 mouse_interaction: mouse::Interaction::None,
                 redraw_at: RedrawRequest::Wait,
-                pointers: FxHashSet::default(),
+                pointers: FxHashMap::default(),
                 preedit: None,
                 ime_state: None,
             },
@@ -185,6 +187,7 @@ where
     P::Theme: theme::Base,
 {
     pub qh: QueueHandle<crate::State<P>>,
+    pub conn: Connection,
     pub raw: RawWindow,
     pub state: State<P>,
     pub viewport_version: u64,
@@ -192,7 +195,7 @@ where
     pub surface: <<P::Renderer as compositor::Default>::Compositor as Compositor>::Surface,
     pub renderer: P::Renderer,
     pub redraw_at: RedrawRequest,
-    pub pointers: FxHashSet<WlPointer>,
+    pub pointers: FxHashMap<WlPointer, Rc<ThemedPointer>>,
     preedit: Option<Preedit<P::Renderer>>,
     ime_state: Option<(Point, input_method::Purpose)>,
 }
@@ -257,6 +260,11 @@ where
     }
 
     pub fn update_mouse(&mut self, interaction: mouse::Interaction) {
+        for themed_pointer in self.pointers.values() {
+            let _ =
+                themed_pointer.set_cursor(&self.conn, crate::conversion::mouse::icon(interaction));
+        }
+
         self.mouse_interaction = interaction;
     }
 

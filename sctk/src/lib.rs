@@ -1,6 +1,6 @@
 //! A windowing shell for Iced, on top of [`smithay-client-toolkit`].
 
-use std::time::Instant;
+use std::{rc::Rc, sync::Arc, time::Instant};
 
 use iced_debug::{
     core::{renderer, widget::operation, window::RedrawRequest, SmolStr},
@@ -18,8 +18,9 @@ mod error;
 mod proxy;
 mod window;
 
-use iced_debug::core::layer_shell;
-use iced_program::runtime::{user_interface, UserInterface};
+use core::layer_shell;
+
+use runtime::{user_interface, UserInterface};
 use rustc_hash::FxHashMap;
 use sctk::{
     compositor::{CompositorHandler, CompositorState},
@@ -172,7 +173,7 @@ where
         touch: FxHashMap::default(),
 
         keyboard_focuses: FxHashMap::default(),
-        touches: FxHashMap::default(),
+        touch_focuses: FxHashMap::default(),
 
         is_daemon,
         error: None,
@@ -244,11 +245,11 @@ where
     text_input_manager: Option<ZwpTextInputManagerV3>,
 
     keyboards: FxHashMap<wl_seat::WlSeat, wl_keyboard::WlKeyboard>,
-    pointers: FxHashMap<wl_seat::WlSeat, ThemedPointer>,
+    pointers: FxHashMap<wl_seat::WlSeat, Rc<ThemedPointer>>,
     touch: FxHashMap<wl_seat::WlSeat, wl_touch::WlTouch>,
 
     keyboard_focuses: FxHashMap<wl_keyboard::WlKeyboard, core::window::Id>,
-    touches: FxHashMap<wl_touch::WlTouch, FxHashMap<i32, (core::window::Id, core::Point)>>,
+    touch_focuses: FxHashMap<wl_touch::WlTouch, FxHashMap<i32, (core::window::Id, core::Point)>>,
 
     is_daemon: bool,
     error: Option<Error>,
@@ -445,14 +446,6 @@ impl<P: Program + 'static> State<P> {
                     mouse_interaction,
                     ..
                 } => {
-                    for pointer in window.pointers.iter() {
-                        if let Some(data) = pointer.data::<PointerData>()
-                            && let Some(themed_pointer) = self.pointers.get(data.seat())
-                        {
-                            let _ = themed_pointer
-                                .set_cursor(&self.conn, conversion::mouse::icon(mouse_interaction));
-                        }
-                    }
                     window.update_mouse(mouse_interaction);
                     window.request_redraw(redraw_request);
                 }
@@ -792,15 +785,6 @@ impl<P: Program + 'static> CompositorHandler for State<P> {
         {
             window.request_redraw(redraw_request);
             window.request_input_method(input_method);
-
-            for pointer in window.pointers.iter() {
-                if let Some(data) = pointer.data::<PointerData>()
-                    && let Some(themed_pointer) = self.pointers.get(data.seat())
-                {
-                    let _ = themed_pointer
-                        .set_cursor(&self.conn, conversion::mouse::icon(mouse_interaction));
-                }
-            }
             window.update_mouse(mouse_interaction);
         }
 
@@ -977,6 +961,7 @@ impl<P: Program + 'static> LayerShellHandler for State<P> {
         let window = program_wrapper.with_mut(|fields| {
             let window = self.window_manager.insert(
                 id,
+                self.conn.clone(),
                 self.qh.clone(),
                 raw_window,
                 surface_size,
@@ -1041,7 +1026,7 @@ impl<P: Program + 'static> SeatHandler for State<P> {
                     self.wl_compositor.create_surface(&self.qh),
                     sctk::seat::pointer::ThemeSpec::System,
                 ) {
-                    let _ = self.pointers.insert(seat, pointer);
+                    let _ = self.pointers.insert(seat, Rc::new(pointer));
                 }
             }
             sctk::seat::Capability::Touch => {
@@ -1055,41 +1040,20 @@ impl<P: Program + 'static> SeatHandler for State<P> {
 
     fn remove_capability(
         &mut self,
-        conn: &Connection,
-        qh: &QueueHandle<Self>,
+        _: &Connection,
+        _: &QueueHandle<Self>,
         seat: wl_seat::WlSeat,
         capability: sctk::seat::Capability,
     ) {
         match capability {
             sctk::seat::Capability::Keyboard => {
-                if let Some(keyboard) = self.keyboards.remove(&seat)
-                    && let Some(id) = self.keyboard_focuses.remove(&keyboard)
-                    && let Some(window) = self.window_manager.get_mut(id)
-                {
-                    window
-                        .state
-                        .update_modifiers(sctk::seat::keyboard::Modifiers::default());
-                    self.events.push((
-                        id,
-                        core::Event::Keyboard(core::keyboard::Event::ModifiersChanged(
-                            core::keyboard::Modifiers::default(),
-                        )),
-                    ));
-                    self.events
-                        .push((id, core::Event::Window(core::window::Event::Unfocused)));
-                }
+                let _ = self.keyboards.remove(&seat);
             }
             sctk::seat::Capability::Pointer => {
-                if let Some(pointer) = self.pointers.remove(&seat) {
-                    for (_, window) in self.window_manager.iter_mut() {
-                        let _ = window.pointers.remove(pointer.pointer());
-                    }
-                }
+                let _ = self.pointers.remove(&seat);
             }
             sctk::seat::Capability::Touch => {
-                if let Some(touch) = self.touch.remove(&seat) {
-                    self.cancel(conn, qh, &touch);
-                }
+                let _ = self.touch.remove(&seat);
             }
             _ => {}
         }
@@ -1234,7 +1198,14 @@ impl<P: Program + 'static> PointerHandler for State<P> {
                 let position = core::Point::new(position.0 as f32, position.1 as f32);
                 match kind {
                     PEK::Enter { .. } => {
-                        let _ = window.pointers.insert(pointer.clone());
+                        if let Some(data) = pointer.data::<PointerData>()
+                            && let Some(themed_pointer) = self.pointers.get(data.seat())
+                        {
+                            let _ = window
+                                .pointers
+                                .insert(pointer.clone(), themed_pointer.clone());
+                        }
+
                         window.state.update_cursor(Some(position));
                         self.events
                             .push((id, core::Event::Mouse(core::mouse::Event::CursorEntered)));
@@ -1303,11 +1274,11 @@ impl<P: Program + 'static> TouchHandler for State<P> {
     ) {
         if let Some((id, window)) = self.window_manager.get_mut_alias(&surface) {
             let position = core::Point::new(position.0 as f32, position.1 as f32);
-            let touch_ids = self
-                .touches
+            let _ = self
+                .touch_focuses
                 .entry(touch.clone())
-                .or_insert_with(|| FxHashMap::default());
-            let _ = touch_ids.insert(touch_id, (id, position));
+                .or_insert_with(|| FxHashMap::default())
+                .insert(touch_id, (id, position));
 
             window.state.update_cursor(Some(position));
             self.events.push((
@@ -1329,8 +1300,8 @@ impl<P: Program + 'static> TouchHandler for State<P> {
         _: u32,
         touch_id: i32,
     ) {
-        if let Some(touch_ids) = self.touches.get_mut(touch)
-            && let Some((id, position)) = touch_ids.remove(&touch_id)
+        if let Some(touch_focuses) = self.touch_focuses.get_mut(touch)
+            && let Some((id, position)) = touch_focuses.remove(&touch_id)
         {
             self.events.push((
                 id,
@@ -1351,8 +1322,8 @@ impl<P: Program + 'static> TouchHandler for State<P> {
         touch_id: i32,
         new_position: (f64, f64),
     ) {
-        if let Some(touch_ids) = self.touches.get_mut(touch)
-            && let Some((id, position)) = touch_ids.get_mut(&touch_id)
+        if let Some(touch_focuses) = self.touch_focuses.get_mut(touch)
+            && let Some((id, position)) = touch_focuses.get_mut(&touch_id)
             && let Some(window) = self.window_manager.get_mut(*id)
         {
             *position = core::Point::new(new_position.0 as f32, new_position.1 as f32);
@@ -1389,8 +1360,8 @@ impl<P: Program + 'static> TouchHandler for State<P> {
     }
 
     fn cancel(&mut self, _: &Connection, _: &QueueHandle<Self>, touch: &wl_touch::WlTouch) {
-        if let Some(touch_ids) = self.touches.remove(touch) {
-            for (touch_id, (id, position)) in touch_ids {
+        if let Some(touch_focuses) = self.touch_focuses.remove(touch) {
+            for (touch_id, (id, position)) in touch_focuses {
                 self.events.push((
                     id,
                     core::Event::Touch(core::touch::Event::FingerLost {

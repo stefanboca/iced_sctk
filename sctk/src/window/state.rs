@@ -4,7 +4,7 @@ use iced_debug::core::Point;
 use smithay_client_toolkit as sctk;
 
 use crate::{
-    core::{Color, Size, mouse, theme, window},
+    core::{mouse, theme, window, Color, Size},
     graphics::Viewport,
     program::{self, Program},
 };
@@ -16,7 +16,6 @@ where
 {
     title: String,
     scale_factor: f64,
-    window_scale_factor: f64,
     viewport: Viewport,
     viewport_version: u64,
     cursor_position: Option<Point<f64>>,
@@ -49,21 +48,18 @@ where
     pub fn new(
         program: &program::Instance<P>,
         window_id: window::Id,
-        physical_size: Size<u32>,
-        window_scale_factor: f64,
+        surface_size: Size<u32>,
     ) -> Self {
         let title = program.title(window_id);
         let scale_factor = program.scale_factor(window_id);
         let theme = program.theme(window_id);
         let style = program.style(&theme);
 
-        let viewport =
-            Viewport::with_physical_size(physical_size, window_scale_factor * scale_factor);
+        let viewport = Viewport::with_physical_size(surface_size, scale_factor);
 
         Self {
             title,
             scale_factor,
-            window_scale_factor,
             viewport,
             viewport_version: 0,
             cursor_position: None,
@@ -139,19 +135,7 @@ where
     }
 
     pub fn resize(&mut self, physical_size: Size<u32>) {
-        self.viewport = Viewport::with_physical_size(
-            physical_size,
-            self.window_scale_factor * self.scale_factor,
-        );
-        let _ = self.viewport_version.wrapping_add(1);
-    }
-
-    pub fn rescale(&mut self, window_scale_factor: f64) {
-        self.window_scale_factor = window_scale_factor;
-        self.viewport = Viewport::with_physical_size(
-            self.viewport.physical_size(),
-            window_scale_factor * self.scale_factor,
-        );
+        self.viewport = Viewport::with_physical_size(physical_size, self.scale_factor);
         let _ = self.viewport_version.wrapping_add(1);
     }
 
@@ -172,10 +156,8 @@ where
         let new_scale_factor = program.scale_factor(window_id);
 
         if self.scale_factor != new_scale_factor {
-            self.viewport = Viewport::with_physical_size(
-                self.viewport.physical_size(),
-                self.window_scale_factor * new_scale_factor,
-            );
+            self.viewport =
+                Viewport::with_physical_size(self.viewport.physical_size(), new_scale_factor);
             self.viewport_version = self.viewport_version.wrapping_add(1);
 
             self.scale_factor = new_scale_factor;

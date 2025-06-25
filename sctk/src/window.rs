@@ -2,7 +2,7 @@ mod state;
 
 use std::{collections::BTreeMap, ffi::c_void, ptr::NonNull};
 
-use iced_debug::core::{Color, Padding, Rectangle, Text, Vector, alignment, renderer, text};
+use iced_debug::core::{alignment, renderer, text, Color, Padding, Rectangle, Text, Vector};
 use iced_program::{
     graphics::compositor,
     runtime::window::raw_window_handle::{
@@ -13,17 +13,17 @@ use iced_program::{
 use rustc_hash::{FxHashMap, FxHashSet};
 use smithay_client_toolkit::{
     reexports::client::{
-        Proxy, QueueHandle,
         protocol::{wl_display::WlDisplay, wl_surface::WlSurface},
+        Proxy, QueueHandle,
     },
-    shell::{WaylandSurface, wlr_layer::LayerSurface},
+    shell::{wlr_layer::LayerSurface, WaylandSurface},
 };
 use state::State;
 use wayland_backend::client::ObjectId;
 
 pub use crate::core::window::{Id, RedrawRequest};
 use crate::{
-    core::{InputMethod, Point, Size, input_method, mouse, theme, time::Instant},
+    core::{input_method, mouse, theme, time::Instant, InputMethod, Point, Size},
     graphics::Compositor,
     program::{self, Program},
 };
@@ -54,16 +54,15 @@ where
         id: Id,
         qh: QueueHandle<crate::State<P>>,
         window: RawWindow,
-        physical_size: Size<u32>,
-        scale_factor: f64,
+        surface_size: Size<u32>,
         program: &program::Instance<P>,
         compositor: &mut <P::Renderer as compositor::Default>::Compositor,
     ) -> &mut Window<P> {
-        let state = State::new(program, id, physical_size, scale_factor);
+        let state = State::new(program, id, surface_size);
         let viewport_version = state.viewport_version();
 
         let surface =
-            compositor.create_surface(window.clone(), physical_size.width, physical_size.height);
+            compositor.create_surface(window.clone(), surface_size.width, surface_size.height);
         let renderer = compositor.create_renderer();
 
         let _ = self.aliases.insert(window.surface().id(), id);

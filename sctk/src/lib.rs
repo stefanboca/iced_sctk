@@ -889,7 +889,7 @@ impl<P: Program + 'static> LayerShellHandler for State<P> {
         configure: LayerSurfaceConfigure,
         _: u32,
     ) {
-        let physical_size = core::Size::new(configure.new_size.0, configure.new_size.1);
+        let surface_size = core::Size::new(configure.new_size.0, configure.new_size.1);
 
         let Some(InProgressWindow {
             id,
@@ -899,12 +899,18 @@ impl<P: Program + 'static> LayerShellHandler for State<P> {
             .in_progress_windows
             .remove(&layer_surface.wl_surface().id())
         else {
-            if let Some((_, window)) = self
+            if let Some((id, window)) = self
                 .window_manager
                 .get_mut_alias(layer_surface.wl_surface())
             {
-                window.state.resize(physical_size);
+                window.state.resize(surface_size);
                 window.request_redraw(core::window::RedrawRequest::NextFrame);
+                self.events.push((
+                    id,
+                    core::Event::Window(core::window::Event::Resized(
+                        window.state.viewport().logical_size(),
+                    )),
+                ));
             }
 
             return;
@@ -953,8 +959,7 @@ impl<P: Program + 'static> LayerShellHandler for State<P> {
                 id,
                 self.qh.clone(),
                 raw_window,
-                physical_size,
-                1.0,
+                surface_size,
                 fields.program,
                 compositor,
             );

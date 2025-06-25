@@ -507,6 +507,7 @@ mod error;
 
 pub mod application;
 pub mod daemon;
+pub mod layer_shell;
 pub mod time;
 pub mod window;
 

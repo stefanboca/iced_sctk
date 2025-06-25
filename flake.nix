@@ -1,9 +1,7 @@
 {
-  description = "Limbo bar, now with more rust";
-
   inputs = {
     flake-parts.url = "github:hercules-ci/flake-parts";
-    nixpkgs.url = "github:cachix/devenv-nixpkgs/rolling";
+    nixpkgs.url = "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz";
     fenix.url = "github:nix-community/fenix";
     fenix.inputs.nixpkgs.follows = "nixpkgs";
   };
@@ -33,21 +31,19 @@
             overlays = [ inputs.fenix.overlays.default ];
           };
 
-          devShells.default = pkgs.mkShell {
+          devShells.default = pkgs.mkShell rec {
             nativeBuildInputs = with pkgs; [ pkg-config ];
-            LD_LIBRARY_PATH = lib.makeLibraryPath (
-              with pkgs;
-              [
-                libGL
-                libxkbcommon
-                vulkan-loader
-                wayland
-              ]
-            );
-            PKG_CONFIG_PATH = lib.concatStringsSep ":" [
-              "${pkgs.wayland.dev}/lib/pkgconfig"
-              "${pkgs.libxkbcommon.dev}/lib/pkgconfig"
+
+            buildInputs = with pkgs; [
+              libGL
+              libxkbcommon
+              vulkan-loader
+              wayland
             ];
+
+            shellHook = ''
+              export LD_LIBRARY_PATH="${lib.makeLibraryPath buildInputs}:$LD_LIBRARY_PATH"
+            '';
           };
         };
     };

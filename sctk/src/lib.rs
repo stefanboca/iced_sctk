@@ -346,13 +346,11 @@ impl<P: Program + 'static> State<P> {
                 .with_user_interfaces_mut(|user_interfaces| user_interfaces.remove(&id));
         }
 
-        if let Some(window) = self.window_manager.remove(id) {
+        if let Some(_window) = self.window_manager.remove(id) {
             // TODO: handle clipboard stuff here, if needed
 
-            let event = match window.raw {
-                RawWindow::Layer(_, _) => core::layer_shell::Event::Closed,
-            };
-            self.events.push((id, core::Event::Layer(event)));
+            self.events
+                .push((id, core::Event::Window(core::window::Event::Closed)));
         }
 
         if self.window_manager.is_empty() {
@@ -1065,8 +1063,10 @@ impl<P: Program + 'static> KeyboardHandler for State<P> {
         _: &[u32],
         _: &[sctk::seat::keyboard::Keysym],
     ) {
-        if let Some((_, window)) = self.window_manager.get_mut_alias(surface) {
+        if let Some((id, window)) = self.window_manager.get_mut_alias(surface) {
             let _ = window.keyboards.insert(keyboard.id());
+            self.events
+                .push((id, core::Event::Window(core::window::Event::Focused)));
         }
     }
 
@@ -1089,6 +1089,8 @@ impl<P: Program + 'static> KeyboardHandler for State<P> {
                     core::keyboard::Modifiers::default(),
                 )),
             ));
+            self.events
+                .push((id, core::Event::Window(core::window::Event::Unfocused)));
         }
     }
 

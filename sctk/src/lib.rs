@@ -736,7 +736,8 @@ impl<P: Program + 'static> CompositorHandler for State<P> {
             window.viewport_version = window.state.viewport_version();
         }
 
-        let redraw_event = core::Event::Layer(layer_shell::Event::RedrawRequested(Instant::now()));
+        let redraw_event =
+            core::Event::Window(core::window::Event::RedrawRequested(Instant::now()));
 
         let cursor = window.state.cursor();
 

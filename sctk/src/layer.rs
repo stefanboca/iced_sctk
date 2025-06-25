@@ -6,7 +6,7 @@ use iced_program::runtime::window::raw_window_handle::{
     RawDisplayHandle, RawWindowHandle, WaylandDisplayHandle,
     WaylandWindowHandle, WindowHandle,
 };
-use smithay_client_toolkit::{
+use sctk::{
     reexports::client::{protocol::wl_display::WlDisplay, Proxy},
     shell::{wlr_layer::LayerSurface, WaylandSurface},
 };

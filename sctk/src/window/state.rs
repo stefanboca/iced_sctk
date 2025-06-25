@@ -1,7 +1,6 @@
 use std::fmt::{Debug, Formatter};
 
 use iced_debug::core::Point;
-use smithay_client_toolkit as sctk;
 
 use crate::{
     core::{mouse, theme, window, Color, Size},

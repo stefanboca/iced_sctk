@@ -1,9 +1,7 @@
-use smithay_client_toolkit as sctk;
-
 use crate::core;
 
 pub mod mouse {
-    use super::{core, sctk};
+    use super::core;
 
     pub fn button(button: u32) -> core::mouse::Button {
         use core::mouse::Button;
@@ -24,7 +22,7 @@ pub mod mouse {
 pub mod keyboard {
     use iced_debug::core::SmolStr;
 
-    use super::{core, sctk};
+    use super::core;
 
     pub fn modifiers(modifiers: sctk::seat::keyboard::Modifiers) -> core::keyboard::Modifiers {
         let mut m = core::keyboard::Modifiers::empty();
@@ -46,7 +44,7 @@ pub mod keyboard {
     }
 
     pub fn key(keysym: sctk::seat::keyboard::Keysym) -> core::keyboard::Key {
-        use core::keyboard::{Key as IK, key::Named as N};
+        use core::keyboard::{key::Named as N, Key as IK};
 
         use sctk::seat::keyboard::Keysym as SK;
         IK::Named(match keysym {

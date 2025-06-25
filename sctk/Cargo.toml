@@ -21,10 +21,7 @@ iced_program.workspace = true
 log.workspace = true
 ouroboros.workspace = true
 rustc-hash.workspace = true
-smithay-client-toolkit = { workspace = true, features = [
-  "calloop",
-  "xkbcommon",
-] }
+sctk = { workspace = true, features = ["calloop", "xkbcommon"] }
 thiserror.workspace = true
 tracing.workspace = true
 wayland-backend = { workspace = true, features = ["client_system"] }

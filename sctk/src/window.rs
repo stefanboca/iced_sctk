@@ -11,7 +11,7 @@ use iced_program::{
     },
 };
 use rustc_hash::{FxHashMap, FxHashSet};
-use smithay_client_toolkit::{
+use sctk::{
     reexports::client::{
         protocol::{wl_display::WlDisplay, wl_keyboard::WlKeyboard, wl_surface::WlSurface},
         Proxy, QueueHandle,

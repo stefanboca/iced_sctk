@@ -1,6 +1,6 @@
 use std::{cell::RefCell, pin::Pin, rc::Rc};
 
-use smithay_client_toolkit::reexports::calloop::{
+use sctk::reexports::calloop::{
     EventSource, PostAction,
     ping::{Ping, PingError, PingSource, make_ping},
 };
@@ -105,10 +105,10 @@ impl<T: 'static> EventSource for ProxySource<T> {
 
     fn process_events<F>(
         &mut self,
-        readiness: smithay_client_toolkit::reexports::calloop::Readiness,
-        token: smithay_client_toolkit::reexports::calloop::Token,
+        readiness: sctk::reexports::calloop::Readiness,
+        token: sctk::reexports::calloop::Token,
         mut callback: F,
-    ) -> Result<smithay_client_toolkit::reexports::calloop::PostAction, Self::Error>
+    ) -> Result<sctk::reexports::calloop::PostAction, Self::Error>
     where
         F: FnMut(Self::Event, &mut Self::Metadata) -> Self::Ret,
     {
@@ -150,26 +150,26 @@ impl<T: 'static> EventSource for ProxySource<T> {
 
     fn register(
         &mut self,
-        poll: &mut smithay_client_toolkit::reexports::calloop::Poll,
-        token_factory: &mut smithay_client_toolkit::reexports::calloop::TokenFactory,
-    ) -> smithay_client_toolkit::reexports::calloop::Result<()> {
+        poll: &mut sctk::reexports::calloop::Poll,
+        token_factory: &mut sctk::reexports::calloop::TokenFactory,
+    ) -> sctk::reexports::calloop::Result<()> {
         let mut source = self.0.source.borrow_mut();
         source.register(poll, token_factory)
     }
 
     fn reregister(
         &mut self,
-        poll: &mut smithay_client_toolkit::reexports::calloop::Poll,
-        token_factory: &mut smithay_client_toolkit::reexports::calloop::TokenFactory,
-    ) -> smithay_client_toolkit::reexports::calloop::Result<()> {
+        poll: &mut sctk::reexports::calloop::Poll,
+        token_factory: &mut sctk::reexports::calloop::TokenFactory,
+    ) -> sctk::reexports::calloop::Result<()> {
         let mut source = self.0.source.borrow_mut();
         source.reregister(poll, token_factory)
     }
 
     fn unregister(
         &mut self,
-        poll: &mut smithay_client_toolkit::reexports::calloop::Poll,
-    ) -> smithay_client_toolkit::reexports::calloop::Result<()> {
+        poll: &mut sctk::reexports::calloop::Poll,
+    ) -> sctk::reexports::calloop::Result<()> {
         let mut source = self.0.source.borrow_mut();
         source.unregister(poll)
     }

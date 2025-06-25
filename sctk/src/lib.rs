@@ -21,8 +21,7 @@ mod window;
 use iced_debug::core::layer_shell;
 use iced_program::runtime::{user_interface, UserInterface};
 use rustc_hash::FxHashMap;
-use smithay_client_toolkit::{
-    self as sctk,
+use sctk::{
     compositor::{CompositorHandler, CompositorState},
     output::{OutputHandler, OutputState},
     reexports::{

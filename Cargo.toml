@@ -98,7 +98,7 @@ overflow-checks = false
 strip = "debuginfo"
 
 [workspace]
-members = ["sctk"]
+members = ["sctk", "examples/*"]
 
 [workspace.package]
 version = "0.14.0-dev"

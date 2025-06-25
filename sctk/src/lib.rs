@@ -92,6 +92,38 @@ where
     );
 
     let (program, task) = runtime.enter(|| program::Instance::new(program));
+    let is_daemon = window_settings.is_none();
+
+    let task = if let Some(_window_settings) = window_settings {
+        let mut task = Some(task);
+
+        // HACK: fix after implementing normal windows
+        // let (_id, open) = runtime::window::open(window_settings);
+
+        let (_id, open) = runtime::layer_shell::open(layer_shell::Settings {
+            layer: core::layer_shell::Layer::Top,
+            namespace: None,
+            size: core::Size {
+                width: 400,
+                height: 400,
+            },
+            anchor: core::layer_shell::Anchor::TOP,
+            exclusive_zone: 0,
+            margin: core::Padding {
+                top: 200,
+                right: 0,
+                bottom: 0,
+                left: 0,
+            },
+            keyboard_interactivity: core::layer_shell::KeyboardInteractivity::OnDemand,
+            output: None,
+        });
+
+        open.then(move |_| task.take().unwrap_or(runtime::Task::none()))
+    } else {
+        task
+    };
+
     if let Some(stream) = runtime::task::into_stream(task) {
         runtime.run(stream);
     }
@@ -124,10 +156,6 @@ where
     let _ = WaylandSource::new(conn, event_queue)
         .insert(loop_handle.clone())
         .unwrap();
-
-    let is_daemon = window_settings.is_none();
-
-    // TODO: open window if non-daemon
 
     let mut state = State {
         display,
